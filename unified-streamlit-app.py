@@ -38,6 +38,15 @@ try:
     except ImportError:
         EXPIRY_DELIVERY_AVAILABLE = False
 
+    # Import account validation
+    try:
+        from account_validator import AccountValidator
+        from account_config import ACCOUNT_REGISTRY
+        ACCOUNT_VALIDATION_AVAILABLE = True
+    except ImportError:
+        ACCOUNT_VALIDATION_AVAILABLE = False
+        logging.warning("Account validation not available")
+
     # Import Simple Price Manager (single source of truth)
     try:
         from simple_price_manager import get_price_manager, SimplePriceManager
@@ -250,10 +259,42 @@ def main():
         st.session_state.cached_mapping_file = None
     if 'cached_position_password' not in st.session_state:
         st.session_state.cached_position_password = None
+
+    # Account validation state
+    if 'account_validator' not in st.session_state:
+        st.session_state.account_validator = AccountValidator() if ACCOUNT_VALIDATION_AVAILABLE else None
+    if 'detected_account' not in st.session_state:
+        st.session_state.detected_account = None
+    if 'account_validated' not in st.session_state:
+        st.session_state.account_validated = False
     
     # Sidebar
     with st.sidebar:
         st.header("📂 Input Files")
+
+        # Display detected account (if any) at top of sidebar
+        if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.detected_account:
+            account = st.session_state.detected_account
+            st.markdown(
+                f"""
+                <div style="background-color: {account['display_color']}15;
+                            border: 2px solid {account['display_color']};
+                            border-radius: 8px;
+                            padding: 12px;
+                            margin-bottom: 20px;">
+                    <div style="font-size: 24px; text-align: center;">{account['icon']}</div>
+                    <div style="font-weight: bold; font-size: 18px; text-align: center; color: {account['display_color']};">
+                        {account['name']}
+                    </div>
+                    <div style="font-size: 12px; text-align: center; color: #666; margin-top: 4px;">
+                        CP: {account['cp_code']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.divider()
         
         # Stage 1 Section
         st.markdown("### Stage 1: Strategy Processing")
@@ -268,6 +309,12 @@ def main():
         # Cache position file when uploaded
         if position_file is not None:
             st.session_state.cached_position_file = position_file
+
+            # Detect account in position file
+            if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+                pos_account = st.session_state.account_validator.detect_account_in_position_file(position_file)
+                if pos_account:
+                    st.session_state.detected_account = pos_account
 
         # Show cached file info if no new upload
         if position_file is None and st.session_state.cached_position_file is not None:
@@ -299,6 +346,28 @@ def main():
             key='trade_file',
             help="MS format trade file"
         )
+
+        # Detect account in trade file and validate
+        if trade_file is not None and ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+            trade_account = st.session_state.account_validator.detect_account_in_trade_file(trade_file)
+
+            # If position file account was detected, validate match
+            if st.session_state.account_validator.position_account or trade_account:
+                is_valid, status_type, message = st.session_state.account_validator.validate_account_match()
+
+                # Update detected account
+                if st.session_state.account_validator.get_account_info():
+                    st.session_state.detected_account = st.session_state.account_validator.get_account_info()
+
+                st.session_state.account_validated = is_valid
+
+                # Display validation message
+                if status_type == "success":
+                    st.success(message)
+                elif status_type == "warning":
+                    st.warning(message)
+                elif status_type == "error":
+                    st.error(message)
 
         # Password field for trade file
         trade_password = None
@@ -487,10 +556,12 @@ def main():
         st.divider()
         
         # Process buttons
+        # Check if we can process (files + account validation)
         can_process_stage1 = (
-            position_file is not None and 
-            trade_file is not None and 
-            (mapping_file is not None or (use_default_mapping == "Use default from repository" and default_mapping))
+            position_file is not None and
+            trade_file is not None and
+            (mapping_file is not None or (use_default_mapping == "Use default from repository" and default_mapping)) and
+            (not ACCOUNT_VALIDATION_AVAILABLE or st.session_state.get('account_validated', True))
         )
         
         can_process_stage2 = st.session_state.stage1_complete

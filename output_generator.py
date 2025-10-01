@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 
 class OutputGenerator:
     """Generates and saves all output files with proper date formatting"""
-    
-    def __init__(self, output_dir: str = "./output"):
+
+    def __init__(self, output_dir: str = "./output", account_prefix: str = ""):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.missing_mappings = {'positions': [], 'trades': []}
+        self.account_prefix = account_prefix  # e.g. "AURIGIN_" or ""
         
     def save_all_outputs(self, 
                         parsed_trades_df: pd.DataFrame,
@@ -45,26 +46,26 @@ class OutputGenerator:
         final_positions_df = self._format_dates_in_dataframe(final_positions_df)
         
         # File 1: Parsed Trade File (original trades from parser)
-        parsed_trades_file = self.output_dir / f"{file_prefix}_1_parsed_trades_{self.timestamp}.csv"
+        parsed_trades_file = self.output_dir / f"{self.account_prefix}{file_prefix}_1_parsed_trades_{self.timestamp}.csv"
         parsed_trades_df.to_csv(parsed_trades_file, index=False, date_format='%Y-%m-%d')
         output_files['parsed_trades'] = parsed_trades_file
         logger.info(f"Saved parsed trades to {parsed_trades_file}")
         
         # File 2: Starting Position File
-        starting_pos_file = self.output_dir / f"{file_prefix}_2_starting_positions_{self.timestamp}.csv"
+        starting_pos_file = self.output_dir / f"{self.account_prefix}{file_prefix}_2_starting_positions_{self.timestamp}.csv"
         starting_positions_df.to_csv(starting_pos_file, index=False, date_format='%Y-%m-%d')
         output_files['starting_positions'] = starting_pos_file
         logger.info(f"Saved starting positions to {starting_pos_file}")
         
         # File 3: Processed Trade File (main output with strategies)
-        processed_trades_file = self.output_dir / f"{file_prefix}_3_processed_trades_{self.timestamp}.csv"
+        processed_trades_file = self.output_dir / f"{self.account_prefix}{file_prefix}_3_processed_trades_{self.timestamp}.csv"
         processed_trades_df.to_csv(processed_trades_file, index=False, date_format='%Y-%m-%d')
         output_files['processed_trades'] = processed_trades_file
         logger.info(f"Saved processed trades to {processed_trades_file}")
-        
+
         # Also save as Excel for better readability
         try:
-            processed_trades_excel = self.output_dir / f"{file_prefix}_3_processed_trades_{self.timestamp}.xlsx"
+            processed_trades_excel = self.output_dir / f"{self.account_prefix}{file_prefix}_3_processed_trades_{self.timestamp}.xlsx"
             with pd.ExcelWriter(processed_trades_excel, engine='openpyxl', date_format='YYYY-MM-DD') as writer:
                 processed_trades_df.to_excel(writer, sheet_name='Processed Trades', index=False)
                 
@@ -84,7 +85,7 @@ class OutputGenerator:
             logger.warning(f"Could not save Excel file: {e}")
         
         # File 4: Final Position File
-        final_pos_file = self.output_dir / f"{file_prefix}_4_final_positions_{self.timestamp}.csv"
+        final_pos_file = self.output_dir / f"{self.account_prefix}{file_prefix}_4_final_positions_{self.timestamp}.csv"
         final_positions_df.to_csv(final_pos_file, index=False, date_format='%Y-%m-%d')
         output_files['final_positions'] = final_pos_file
         logger.info(f"Saved final positions to {final_pos_file}")
@@ -119,7 +120,7 @@ class OutputGenerator:
             # Import position grouper
             from positions_grouper import PositionGrouper
 
-            output_file = self.output_dir / f"{file_prefix}_{self.timestamp}.xlsx"
+            output_file = self.output_dir / f"{self.account_prefix}{file_prefix}_{self.timestamp}.xlsx"
             wb = Workbook()
 
             # Remove default sheet
@@ -382,11 +383,11 @@ class OutputGenerator:
         unique_symbols = unique_symbols.sort_values('Symbol')
         
         # Save to CSV
-        missing_file = self.output_dir / f"MISSING_MAPPINGS_{self.timestamp}.csv"
+        missing_file = self.output_dir / f"{self.account_prefix}MISSING_MAPPINGS_{self.timestamp}.csv"
         unique_symbols.to_csv(missing_file, index=False, date_format='%Y-%m-%d')
-        
+
         # Also create a template for easy addition to mapping file
-        template_file = self.output_dir / f"MAPPING_TEMPLATE_{self.timestamp}.csv"
+        template_file = self.output_dir / f"{self.account_prefix}MAPPING_TEMPLATE_{self.timestamp}.csv"
         template_df = unique_symbols[['Symbol', 'Suggested_Ticker', 'Underlying', 'Exchange', 'Lot_Size']]
         template_df.columns = ['Symbol', 'Ticker', 'Underlying', 'Exchange', 'Lot_Size']
         template_df.to_csv(template_file, index=False)
@@ -433,7 +434,7 @@ class OutputGenerator:
                               input_parser=None,
                               trade_parser=None) -> Path:
         """Create a summary report of the processing including missing mappings"""
-        summary_file = self.output_dir / f"summary_report_{self.timestamp}.txt"
+        summary_file = self.output_dir / f"{self.account_prefix}summary_report_{self.timestamp}.txt"
 
         with open(summary_file, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
