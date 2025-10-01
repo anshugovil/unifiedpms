@@ -42,10 +42,22 @@ class AccountValidator:
             else:
                 search_text = str(file_content)
 
-            # Search for each known CP code
+            # Normalize text for searching: uppercase, remove extra whitespace
+            search_text_normalized = ' '.join(search_text.upper().split())
+
+            # Search for each known CP code (case-insensitive, whitespace-tolerant)
             found_codes = []
             for cp_code in get_all_cp_codes():
-                if cp_code in search_text:
+                # Normalize CP code for comparison
+                cp_code_normalized = cp_code.upper().replace(' ', '')
+
+                # Also check with spaces removed from search text
+                search_text_no_spaces = search_text_normalized.replace(' ', '')
+
+                # Try multiple variations
+                if (cp_code.upper() in search_text_normalized or
+                    cp_code_normalized in search_text_no_spaces or
+                    cp_code in search_text):  # Original case-sensitive as fallback
                     found_codes.append(cp_code)
 
             # Validation
