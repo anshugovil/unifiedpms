@@ -32,33 +32,57 @@ class AccountValidator:
             Account dict if found, None otherwise
         """
         try:
-            # Convert file content to searchable text
-            if isinstance(file_content, bytes):
-                # Try to decode as text
+            # Convert to string for searching
+            search_text = ""
+
+            # Try to read as structured data (Excel/CSV)
+            # This is more reliable than searching raw bytes
+            try:
+                # Try reading as CSV first
                 try:
-                    search_text = file_content.decode('utf-8', errors='ignore')
+                    df = pd.read_csv(io.BytesIO(file_content) if isinstance(file_content, bytes) else io.StringIO(file_content))
+                    # Convert entire DataFrame to string for searching
+                    search_text = df.to_string()
+                    logger.debug(f"Successfully read {file_type} file as CSV")
                 except:
+                    # Try reading as Excel
+                    try:
+                        df = pd.read_excel(io.BytesIO(file_content) if isinstance(file_content, bytes) else file_content,
+                                          sheet_name=0, header=None)  # Read without headers to get all rows
+                        # Convert entire DataFrame to string for searching
+                        search_text = df.to_string()
+                        logger.debug(f"Successfully read {file_type} file as Excel")
+                    except:
+                        # Fall back to text search
+                        if isinstance(file_content, bytes):
+                            try:
+                                search_text = file_content.decode('utf-8', errors='ignore')
+                            except:
+                                search_text = str(file_content)
+                        else:
+                            search_text = str(file_content)
+                        logger.debug(f"Using text search for {file_type} file")
+            except Exception as e:
+                logger.warning(f"Error reading {file_type} file as structured data: {e}")
+                # Fall back to text search
+                if isinstance(file_content, bytes):
+                    try:
+                        search_text = file_content.decode('utf-8', errors='ignore')
+                    except:
+                        search_text = str(file_content)
+                else:
                     search_text = str(file_content)
-            else:
-                search_text = str(file_content)
 
-            # Normalize text for searching: uppercase, remove extra whitespace
-            search_text_normalized = ' '.join(search_text.upper().split())
+            # Normalize text for searching: uppercase
+            search_text_upper = search_text.upper()
 
-            # Search for each known CP code (case-insensitive, whitespace-tolerant)
+            # Search for each known CP code (case-insensitive)
             found_codes = []
             for cp_code in get_all_cp_codes():
-                # Normalize CP code for comparison
-                cp_code_normalized = cp_code.upper().replace(' ', '')
-
-                # Also check with spaces removed from search text
-                search_text_no_spaces = search_text_normalized.replace(' ', '')
-
-                # Try multiple variations
-                if (cp_code.upper() in search_text_normalized or
-                    cp_code_normalized in search_text_no_spaces or
-                    cp_code in search_text):  # Original case-sensitive as fallback
+                # Check if CP code appears in text (case-insensitive)
+                if cp_code.upper() in search_text_upper:
                     found_codes.append(cp_code)
+                    logger.info(f"Found CP code {cp_code} in {file_type} file")
 
             # Validation
             if len(found_codes) == 0:
