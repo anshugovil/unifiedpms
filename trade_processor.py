@@ -24,6 +24,10 @@ class ProcessedTrade:
     split_qty: float
     lot_size: int
     trade_object: object  # Store original trade object for details
+    # Enhanced fields from broker reconciliation (proportionally split if trade is split)
+    comms: Optional[float] = None  # Pure brokerage amount for this trade/split
+    taxes: Optional[float] = None  # Total taxes for this trade/split
+    td: Optional[str] = None  # Trade date from broker file
 
 
 class TradeProcessor:
@@ -80,7 +84,10 @@ class TradeProcessor:
                 logger.info(f"After trade {trade_idx}: Position={pos_after.lots} lots ({pos_after.strategy})")
             else:
                 logger.info(f"After trade {trade_idx}: No position (closed)")
-        
+
+        # Store processed trades for later use (e.g., final enhanced clearing file)
+        self.processed_trades = processed_rows
+
         return self._create_output_dataframe(processed_rows, trade_df, has_headers, header_row)
     
     def _check_for_headers(self, trade_df: pd.DataFrame) -> bool:
@@ -120,7 +127,12 @@ class TradeProcessor:
             
             # Calculate QTY as lots * lot_size
             qty = abs(trade_quantity) * lot_size
-            
+
+            # Extract enhanced fields if present
+            comms = trade.comms if hasattr(trade, 'comms') else None
+            taxes = trade.taxes if hasattr(trade, 'taxes') else None
+            td = trade.td if hasattr(trade, 'td') else None
+
             processed = ProcessedTrade(
                 original_row_index=row_index,
                 original_trade=original_row.to_dict(),
@@ -131,7 +143,10 @@ class TradeProcessor:
                 split_lots=abs(trade_quantity),
                 split_qty=qty,
                 lot_size=lot_size,
-                trade_object=trade  # Store trade object
+                trade_object=trade,  # Store trade object
+                comms=comms,
+                taxes=taxes,
+                td=td
             )
             
             # Update position with strategy AND TRADE OBJECT
@@ -148,9 +163,14 @@ class TradeProcessor:
             # SAME DIRECTION - adding to position
             strategy = position.strategy  # Keep position's strategy
             is_opposite = self._is_strategy_opposite_to_trade(strategy, trade_quantity, security_type)
-            
+
             qty = abs(trade_quantity) * lot_size
-            
+
+            # Extract enhanced fields if present
+            comms = trade.comms if hasattr(trade, 'comms') else None
+            taxes = trade.taxes if hasattr(trade, 'taxes') else None
+            td = trade.td if hasattr(trade, 'td') else None
+
             processed = ProcessedTrade(
                 original_row_index=row_index,
                 original_trade=original_row.to_dict(),
@@ -161,7 +181,10 @@ class TradeProcessor:
                 split_lots=abs(trade_quantity),
                 split_qty=qty,
                 lot_size=lot_size,
-                trade_object=trade
+                trade_object=trade,
+                comms=comms,
+                taxes=taxes,
+                td=td
             )
             
             # Update position, keeping the same strategy
@@ -176,9 +199,14 @@ class TradeProcessor:
             # NO SPLIT - trade just reduces position
             strategy = position.strategy
             is_opposite = self._is_strategy_opposite_to_trade(strategy, trade_quantity, security_type)
-            
+
             qty = abs(trade_quantity) * lot_size
-            
+
+            # Extract enhanced fields if present
+            comms = trade.comms if hasattr(trade, 'comms') else None
+            taxes = trade.taxes if hasattr(trade, 'taxes') else None
+            td = trade.td if hasattr(trade, 'td') else None
+
             processed = ProcessedTrade(
                 original_row_index=row_index,
                 original_trade=original_row.to_dict(),
@@ -189,7 +217,10 @@ class TradeProcessor:
                 split_lots=abs(trade_quantity),
                 split_qty=qty,
                 lot_size=lot_size,
-                trade_object=trade
+                trade_object=trade,
+                comms=comms,
+                taxes=taxes,
+                td=td
             )
             
             self.position_manager.update_position(
@@ -208,23 +239,50 @@ class TradeProcessor:
         trade_quantity = trade.position_lots
         security_type = trade.security_type
         lot_size = trade.lot_size
-        
+
         # Calculate split quantities
         close_quantity = -position.lots  # Opposite sign to close
         remaining_quantity = trade_quantity + position.lots  # What's left after closing
-        
+
         # Calculate split lots
         close_lots = abs(position.lots)
         open_lots = abs(remaining_quantity)
-        
+
         # Calculate QTY as lots * lot_size
         close_qty = close_lots * lot_size
         open_qty = open_lots * lot_size
-        
+
+        # Proportionally split comms and taxes if present
+        original_comms = trade.comms if hasattr(trade, 'comms') else None
+        original_taxes = trade.taxes if hasattr(trade, 'taxes') else None
+        original_td = trade.td if hasattr(trade, 'td') else None
+
+        close_comms = None
+        close_taxes = None
+        open_comms = None
+        open_taxes = None
+
+        if original_comms is not None or original_taxes is not None:
+            # Calculate split ratio based on lots
+            total_lots = abs(trade_quantity)
+            close_ratio = close_lots / total_lots if total_lots > 0 else 0.5
+            open_ratio = open_lots / total_lots if total_lots > 0 else 0.5
+
+            if original_comms is not None:
+                close_comms = round(original_comms * close_ratio, 2)
+                open_comms = round(original_comms * open_ratio, 2)
+
+            if original_taxes is not None:
+                close_taxes = round(original_taxes * close_ratio, 2)
+                open_taxes = round(original_taxes * open_ratio, 2)
+
+            logger.debug(f"Split comms/taxes: Original=({original_comms},{original_taxes}), "
+                        f"Close=({close_comms},{close_taxes}), Open=({open_comms},{open_taxes})")
+
         # FIRST SPLIT - CLOSING EXISTING POSITION
         close_strategy = position.strategy
         is_opposite_close = self._is_strategy_opposite_to_trade(close_strategy, trade_quantity, security_type)
-        
+
         processed_close = ProcessedTrade(
             original_row_index=row_index,
             original_trade=original_row.to_dict(),
@@ -235,7 +293,10 @@ class TradeProcessor:
             split_lots=close_lots,
             split_qty=close_qty,
             lot_size=lot_size,
-            trade_object=trade
+            trade_object=trade,
+            comms=close_comms,
+            taxes=close_taxes,
+            td=original_td  # Same trade date for both splits
         )
         
         logger.info(f"  Split 1 (close): {close_lots} lots ({close_qty} qty), Strategy={close_strategy}")
@@ -249,7 +310,7 @@ class TradeProcessor:
         # SECOND SPLIT - OPENING NEW POSITION
         new_strategy = self._get_new_position_strategy(remaining_quantity, security_type)
         is_opposite_open = self._is_strategy_opposite_to_trade(new_strategy, remaining_quantity, security_type)
-        
+
         processed_open = ProcessedTrade(
             original_row_index=row_index,
             original_trade=original_row.to_dict(),
@@ -260,7 +321,10 @@ class TradeProcessor:
             split_lots=open_lots,
             split_qty=open_qty,
             lot_size=lot_size,
-            trade_object=trade
+            trade_object=trade,
+            comms=open_comms,
+            taxes=open_taxes,
+            td=original_td  # Same trade date for both splits
         )
         
         logger.info(f"  Split 2 (open): {open_lots} lots ({open_qty} qty), Strategy={new_strategy}")
@@ -329,7 +393,12 @@ class TradeProcessor:
             row_dict['Split?'] = 'Yes' if pt.is_split else 'No'
             row_dict['Opposite?'] = 'Yes' if pt.is_opposite else 'No'
             row_dict['Bloomberg_Ticker'] = pt.bloomberg_ticker
-            
+
+            # Add enhanced columns from broker reconciliation (if available)
+            row_dict['Comms'] = pt.comms if pt.comms is not None else ''
+            row_dict['Taxes'] = pt.taxes if pt.taxes is not None else ''
+            row_dict['TD'] = pt.td if pt.td is not None else ''
+
             output_rows.append(row_dict)
         
         result_df = pd.DataFrame(output_rows)
@@ -337,17 +406,17 @@ class TradeProcessor:
         # Set column names
         if has_headers and header_row:
             original_headers = header_row[:14]
-            new_headers = ['Strategy', 'Split?', 'Opposite?', 'Bloomberg_Ticker']
+            new_headers = ['Strategy', 'Split?', 'Opposite?', 'Bloomberg_Ticker', 'Comms', 'Taxes', 'TD']
             all_headers = original_headers + new_headers
-            
+
             column_mapping = {}
             for i in range(14):
                 column_mapping[i] = original_headers[i] if i < len(original_headers) else f'Col_{i}'
-            
+
             result_df.rename(columns=column_mapping, inplace=True)
             final_columns = original_headers + new_headers
         else:
-            final_columns = list(range(14)) + ['Strategy', 'Split?', 'Opposite?', 'Bloomberg_Ticker']
+            final_columns = list(range(14)) + ['Strategy', 'Split?', 'Opposite?', 'Bloomberg_Ticker', 'Comms', 'Taxes', 'TD']
         
         # Ensure all columns exist and are in correct order
         for col in final_columns:
@@ -355,5 +424,63 @@ class TradeProcessor:
                 result_df[col] = None
         
         result_df = result_df[final_columns]
-        
+
+        return result_df
+
+    def create_final_enhanced_clearing_file(self, processed_trades: List[ProcessedTrade],
+                                           original_df: pd.DataFrame, has_headers: bool,
+                                           header_row: Optional[List]) -> pd.DataFrame:
+        """
+        Create final enhanced clearing file in original format (14 columns + Comms, Taxes, TD)
+        Same as enhanced clearing file but with splits applied and quantities adjusted
+        """
+        output_rows = []
+
+        for pt in processed_trades:
+            row_dict = deepcopy(pt.original_trade)
+
+            # Update quantities for splits
+            if pt.is_split:
+                buy_sell = str(row_dict.get(10, '')).upper()
+                sign = -1 if buy_sell.startswith('S') else 1
+
+                row_dict[11] = pt.split_qty * sign  # QTY with sign
+                row_dict[12] = pt.split_lots * sign  # Lots with sign
+            else:
+                buy_sell = str(row_dict.get(10, '')).upper()
+                sign = -1 if buy_sell.startswith('S') else 1
+
+                row_dict[11] = pt.split_qty * sign
+                row_dict[12] = pt.split_lots * sign
+
+            # Update enhanced columns (proportionally split if needed)
+            row_dict['Comms'] = pt.comms if pt.comms is not None else ''
+            row_dict['Taxes'] = pt.taxes if pt.taxes is not None else ''
+            row_dict['TD'] = pt.td if pt.td is not None else ''
+
+            output_rows.append(row_dict)
+
+        result_df = pd.DataFrame(output_rows)
+
+        # Set column names - ONLY original 14 columns + 3 enhanced columns
+        if has_headers and header_row:
+            original_headers = header_row[:14]
+            enhanced_headers = ['Comms', 'Taxes', 'TD']
+            final_columns = original_headers + enhanced_headers
+
+            column_mapping = {}
+            for i in range(14):
+                column_mapping[i] = original_headers[i] if i < len(original_headers) else f'Col_{i}'
+
+            result_df.rename(columns=column_mapping, inplace=True)
+        else:
+            final_columns = list(range(14)) + ['Comms', 'Taxes', 'TD']
+
+        # Ensure all columns exist and are in correct order
+        for col in final_columns:
+            if col not in result_df.columns:
+                result_df[col] = None
+
+        result_df = result_df[final_columns]
+
         return result_df

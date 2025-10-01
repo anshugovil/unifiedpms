@@ -12,9 +12,9 @@ ACCOUNT_REGISTRY = {
         'icon': '🟢',
         'description': 'AURIGIN Trading Account'
     },
-    'CITI0007707': {
+    'CITI00007707': {
         'name': 'WAFRA',
-        'cp_code': 'CITI0007707',
+        'cp_code': 'CITI00007707',
         'display_color': '#1565C0',  # Blue
         'icon': '🔵',
         'description': 'WAFRA Trading Account'

@@ -47,6 +47,15 @@ try:
         ACCOUNT_VALIDATION_AVAILABLE = False
         logging.warning("Account validation not available")
 
+    # Import broker reconciliation
+    try:
+        from trade_reconciliation import TradeReconciler
+        from broker_config import detect_broker_from_filename, BROKER_REGISTRY
+        BROKER_RECON_AVAILABLE = True
+    except ImportError:
+        BROKER_RECON_AVAILABLE = False
+        logging.warning("Broker reconciliation not available")
+
     # Import Simple Price Manager (single source of truth)
     try:
         from simple_price_manager import get_price_manager, SimplePriceManager
@@ -267,9 +276,41 @@ def main():
         st.session_state.detected_account = None
     if 'account_validated' not in st.session_state:
         st.session_state.account_validated = False
-    
+
+    # Processing mode state
+    if 'processing_mode' not in st.session_state:
+        st.session_state.processing_mode = 'EOD'
+    if 'broker_recon_complete' not in st.session_state:
+        st.session_state.broker_recon_complete = False
+    if 'enhanced_clearing_file' not in st.session_state:
+        st.session_state.enhanced_clearing_file = None
+    if 'final_enhanced_clearing_file' not in st.session_state:
+        st.session_state.final_enhanced_clearing_file = None
+    if 'broker_recon_result' not in st.session_state:
+        st.session_state.broker_recon_result = None
+
     # Sidebar
     with st.sidebar:
+        st.header("⚙️ Processing Mode")
+
+        # Mode selector
+        processing_mode = st.radio(
+            "Select mode:",
+            ["EOD (with broker reconciliation)", "Intraday (direct trades)"],
+            index=0 if st.session_state.processing_mode == 'EOD' else 1,
+            help="**EOD**: Full reconciliation with executing broker files (includes Comms/Taxes)\n\n**Intraday**: Quick processing with clearing file only (no Comms/Taxes)"
+        )
+
+        # Update session state
+        st.session_state.processing_mode = 'EOD' if 'EOD' in processing_mode else 'Intraday'
+
+        # Show mode description
+        if st.session_state.processing_mode == 'EOD':
+            st.info("📊 **EOD Mode**: Reconciles clearing with executing broker files. Outputs include commission and tax data.")
+        else:
+            st.info("⚡ **Intraday Mode**: Fast processing without broker reconciliation. No commission/tax data.")
+
+        st.divider()
         st.header("📂 Input Files")
 
         # Display detected account (if any) at top of sidebar
@@ -340,12 +381,36 @@ def main():
             elif st.session_state.cached_position_password:
                 position_password = st.session_state.cached_position_password
 
-        trade_file = st.file_uploader(
-            "2. Trade File",
-            type=['xlsx', 'xls', 'csv'],
-            key='trade_file',
-            help="MS format trade file"
-        )
+        # Conditional file uploaders based on mode
+        if st.session_state.processing_mode == 'Intraday':
+            # Intraday mode: Just clearing file
+            trade_file = st.file_uploader(
+                "2. Clearing Trade File",
+                type=['xlsx', 'xls', 'csv'],
+                key='trade_file',
+                help="Clearing broker trade file (MS format)"
+            )
+            broker_files = None
+        else:
+            # EOD mode: Clearing file + Broker files
+            clearing_file = st.file_uploader(
+                "2. Clearing Trade File",
+                type=['xlsx', 'xls', 'csv'],
+                key='clearing_file_eod',
+                help="Clearing broker trade file"
+            )
+
+            broker_files = st.file_uploader(
+                "3. Executing Broker Files",
+                type=['xlsx', 'xls'],
+                accept_multiple_files=True,
+                key='broker_files',
+                help="One or more broker files (ICICI, Kotak, Morgan Stanley, etc.)"
+            )
+
+            # For consistency in later code, set trade_file to clearing_file in EOD mode
+            # (will be replaced with enhanced file after reconciliation)
+            trade_file = clearing_file
 
         # Detect account in trade file and validate
         if trade_file is not None and ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
@@ -384,7 +449,9 @@ def main():
                         help="This file is encrypted. Please enter the password."
                     )
         
-        st.subheader("3. Mapping File")
+        # Mapping file numbering depends on mode
+        mapping_number = "3" if st.session_state.processing_mode == 'Intraday' else "4"
+        st.subheader(f"{mapping_number}. Mapping File")
         default_mapping = None
         
         mapping_locations = [
@@ -552,22 +619,63 @@ def main():
                 type=['xlsx', 'xls', 'csv'],
                 key='pms_file'
             )
-        
+
         st.divider()
         
         # Process buttons
-        # Check if we can process (files + account validation)
-        can_process_stage1 = (
+        # Check if we can process (files + account validation + broker recon for EOD)
+        base_files_ready = (
             position_file is not None and
             trade_file is not None and
             (mapping_file is not None or (use_default_mapping == "Use default from repository" and default_mapping)) and
             (not ACCOUNT_VALIDATION_AVAILABLE or st.session_state.get('account_validated', True))
         )
-        
+
+        # EOD mode requires broker reconciliation with 100% match
+        if st.session_state.processing_mode == 'EOD':
+            if broker_files and trade_file:
+                # Broker reconciliation button
+                st.markdown("### 🏦 Step 1: Broker Reconciliation (Required)")
+                if st.button("▶️ Run Broker Reconciliation", type="primary", use_container_width=True):
+                    account_prefix = ""
+                    if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+                        account_prefix = st.session_state.account_validator.get_account_prefix()
+
+                    if BROKER_RECON_AVAILABLE:
+                        run_broker_reconciliation(trade_file, broker_files, mapping_file, account_prefix)
+                    else:
+                        st.error("Broker reconciliation module not available")
+
+                # Check if reconciliation is complete and 100%
+                if st.session_state.broker_recon_complete:
+                    recon_result = st.session_state.broker_recon_result
+                    if recon_result and recon_result.get('match_rate') == 100:
+                        st.success(f"✅ Broker reconciliation complete: {recon_result['match_rate']:.1f}% match")
+                        can_process_stage1 = base_files_ready
+                    else:
+                        match_rate = recon_result.get('match_rate', 0) if recon_result else 0
+                        st.error(f"⚠️ Reconciliation incomplete: {match_rate:.1f}% matched")
+                        st.warning("""
+                        **Options:**
+                        1. Fix your files and re-run reconciliation
+                        2. Switch to Intraday mode (won't have Comms/Taxes data)
+                        """)
+                        can_process_stage1 = False
+                else:
+                    st.info("👆 Run broker reconciliation first to proceed")
+                    can_process_stage1 = False
+            else:
+                st.warning("Upload clearing file and broker files to proceed")
+                can_process_stage1 = False
+        else:
+            # Intraday mode - no broker recon needed
+            can_process_stage1 = base_files_ready
+
         can_process_stage2 = st.session_state.stage1_complete
-        
+
+        st.markdown("### 📊 Stage Processing")
         col1, col2 = st.columns(2)
-        
+
         with col1:
             if st.button("🚀 Run Stage 1", type="primary", use_container_width=True, disabled=not can_process_stage1):
                 # Get account prefix
@@ -575,7 +683,17 @@ def main():
                 if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
                     account_prefix = st.session_state.account_validator.get_account_prefix()
 
-                process_stage1(position_file, trade_file, mapping_file, use_default_mapping, default_mapping,
+                # In EOD mode, use enhanced clearing file
+                trade_file_to_use = trade_file
+                if st.session_state.processing_mode == 'EOD' and st.session_state.broker_recon_complete:
+                    enhanced_file_path = st.session_state.enhanced_clearing_file
+                    if enhanced_file_path and Path(enhanced_file_path).exists():
+                        with open(enhanced_file_path, 'rb') as f:
+                            trade_file_to_use = io.BytesIO(f.read())
+                            trade_file_to_use.name = Path(enhanced_file_path).name
+                        st.info("Using enhanced clearing file (with Comms, Taxes, TD)")
+
+                process_stage1(position_file, trade_file_to_use, mapping_file, use_default_mapping, default_mapping,
                              position_password, trade_password, account_prefix)
         
         with col2:
@@ -591,11 +709,29 @@ def main():
                 if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
                     account_prefix = st.session_state.account_validator.get_account_prefix()
 
-                # Run Stage 1
-                if process_stage1(position_file, trade_file, mapping_file, use_default_mapping, default_mapping,
+                # Step 1: Use enhanced file if in EOD mode and broker recon is complete
+                trade_file_to_use = trade_file
+                if st.session_state.processing_mode == 'EOD' and st.session_state.broker_recon_complete:
+                    recon_result = st.session_state.broker_recon_result
+                    if recon_result and recon_result.get('match_rate') == 100:
+                        enhanced_file_path = st.session_state.get('enhanced_clearing_file')
+                        if enhanced_file_path and Path(enhanced_file_path).exists():
+                            st.info("🎯 Using enhanced clearing file (with Comms, Taxes, TD) for all processing...")
+
+                            # Load enhanced clearing file
+                            with open(enhanced_file_path, 'rb') as f:
+                                trade_file_to_use = io.BytesIO(f.read())
+                                trade_file_to_use.name = Path(enhanced_file_path).name
+
+                # Step 2: Run Stage 1 (with enhanced file if available)
+                if process_stage1(position_file, trade_file_to_use, mapping_file, use_default_mapping, default_mapping,
                                 position_password, trade_password, account_prefix):
                     # Run Stage 2
                     process_stage2("Use built-in schema (default)", None, account_prefix)
+
+                    # Show success if using enhanced file
+                    if trade_file_to_use != trade_file:
+                        st.success("✅ ACM output now includes Trade Date, Brokerage & Taxes from broker reconciliation!")
 
                     # Run deliverables (always enabled)
                     run_deliverables_calculation(st.session_state.get('usdinr_rate', 88.0), account_prefix)
@@ -616,7 +752,7 @@ def main():
             st.divider()
             if st.button("📅 Regenerate Expiry Deliveries", type="secondary", use_container_width=True):
                 run_expiry_delivery_generation()
-        
+
         st.divider()
         if st.button("🔄 Reset All", type="secondary", use_container_width=True):
             for key in list(st.session_state.keys()):
@@ -794,7 +930,33 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
             parsed_trades_df = output_gen.create_trade_dataframe_from_positions(trades)
             processed_trades_df = trade_processor.process_trades(trades, trade_df)
             final_positions_df = position_manager.get_final_positions()
-            
+
+            # Generate final enhanced clearing file (original format with splits applied)
+            has_headers = trade_processor._check_for_headers(trade_df) if hasattr(trade_processor, '_check_for_headers') else False
+            header_row = trade_df.iloc[0].to_list() if has_headers else None
+            final_enhanced_clearing_df = trade_processor.create_final_enhanced_clearing_file(
+                trade_processor.processed_trades,
+                trade_df,
+                has_headers,
+                header_row
+            )
+
+            # Save final enhanced clearing file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if is_streamlit_cloud():
+                output_dir = get_temp_dir() / "stage1"
+                output_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                output_dir = Path("output/stage1")
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+            final_enhanced_file = output_dir / f"{account_prefix}final_enhanced_clearing_{timestamp}.csv"
+            final_enhanced_clearing_df.to_csv(final_enhanced_file, index=False)
+            logger.info(f"Saved final enhanced clearing file: {final_enhanced_file}")
+
+            # Store in session state for download
+            st.session_state.final_enhanced_clearing_file = str(final_enhanced_file)
+
             # Generate output files
             output_files = output_gen.save_all_outputs(
                 parsed_trades_df,
@@ -816,7 +978,10 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
             }
             st.session_state.stage1_complete = True
             st.session_state.processed_trades_for_acm = processed_trades_df
-            
+
+            # Debug: Log columns available for Stage 2
+            logger.info(f"Stored {len(processed_trades_df)} trades for ACM with columns: {list(processed_trades_df.columns)}")
+
             # Metrics
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -847,7 +1012,14 @@ def process_stage2(schema_option, custom_schema_file, account_prefix=""):
                 return False
             
             processed_trades_df = st.session_state.processed_trades_for_acm
-            
+
+            # Validate we have trades to process
+            if processed_trades_df is None or len(processed_trades_df) == 0:
+                st.error("❌ No trades found in Stage 1 output. Please re-run Stage 1.")
+                return False
+
+            st.info(f"Processing {len(processed_trades_df)} trades to ACM format...")
+
             # Initialize ACM Mapper
             if schema_option == "Use built-in schema (default)":
                 acm_mapper = ACMMapper()
@@ -965,8 +1137,9 @@ def run_deliverables_calculation(usdinr_rate: float, account_prefix=""):
                                 if price:
                                     prices[symbol] = price
             else:
-                st.warning("Price manager not initialized. Please fetch or upload prices first.")
-            
+                st.info("ℹ️ No prices available. Deliverables will be calculated with 0 prices (options assumed 0).")
+                prices = {}  # Empty dict, will default to 0 in calculator
+
             calc = DeliverableCalculator(usdinr_rate)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1189,6 +1362,94 @@ def run_pms_reconciliation(pms_file):
     except Exception as e:
         st.error(f"❌ Error in reconciliation: {str(e)}")
         logger.error(traceback.format_exc())
+
+
+def run_broker_reconciliation(trade_file, broker_files, mapping_file, account_prefix=""):
+    """Run broker reconciliation to match clearing with executing broker trades"""
+    if not BROKER_RECON_AVAILABLE:
+        st.error("Broker reconciliation module not available")
+        return False
+
+    try:
+        if not broker_files or len(broker_files) == 0:
+            st.warning("No broker files uploaded")
+            return False
+
+        with st.spinner("🏦 Running broker reconciliation..."):
+            # Get futures mapping path
+            if mapping_file:
+                temp_dir = get_temp_dir()
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', dir=temp_dir) as tmp:
+                    tmp.write(mapping_file.getbuffer())
+                    mapping_path = tmp.name
+            else:
+                mapping_path = "futures mapping.csv"
+
+            # Create reconciler with proper output directory
+            # Use ./output for desktop, temp for cloud
+            output_base = "./output" if not is_streamlit_cloud() else str(get_temp_dir())
+
+            # Ensure output directory exists
+            Path(output_base).mkdir(exist_ok=True)
+
+            st.info(f"🗂️ Output directory: {Path(output_base).absolute()}")
+            reconciler = TradeReconciler(output_dir=output_base, account_prefix=account_prefix)
+
+            # Run reconciliation
+            result = reconciler.reconcile(
+                clearing_file=trade_file,
+                broker_files=broker_files,
+                futures_mapping_file=mapping_path
+            )
+
+            if result['success']:
+                st.session_state.broker_recon_complete = True
+                st.session_state.broker_recon_result = result
+
+                # Display summary
+                st.success(f"✅ Broker reconciliation complete!")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Matched Trades", result['matched_count'])
+                with col2:
+                    st.metric("Match Rate", f"{result['match_rate']:.1f}%")
+                with col3:
+                    st.metric("Unmatched", result['unmatched_clearing_count'])
+
+                # Store file paths for download (use same pattern as other features)
+                enhanced_file = result.get('enhanced_clearing_file')
+                recon_report = result.get('reconciliation_report')
+
+                if enhanced_file:
+                    st.session_state.enhanced_clearing_file = enhanced_file
+                    if Path(enhanced_file).exists():
+                        st.info(f"✓ Enhanced clearing file: {Path(enhanced_file).name}")
+                    else:
+                        st.warning(f"⚠️ Enhanced clearing file path exists but file not found: {enhanced_file}")
+
+                if recon_report:
+                    st.session_state.broker_recon_report = recon_report
+                    if Path(recon_report).exists():
+                        st.info(f"✓ Reconciliation report: {Path(recon_report).name}")
+                    else:
+                        st.warning(f"⚠️ Recon report path exists but file not found: {recon_report}")
+
+                if not enhanced_file and not recon_report:
+                    st.warning("⚠️ No output files generated. Check logs for errors.")
+
+                # Show where to download
+                st.info("📥 Download files from the **Downloads** tab → **Enhanced Reports** section")
+
+                return True
+            else:
+                st.error(f"❌ Reconciliation failed: {result.get('error', 'Unknown error')}")
+                return False
+
+    except Exception as e:
+        st.error(f"❌ Error in broker reconciliation: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
 
 # Display Functions
 
@@ -1561,11 +1822,13 @@ def display_deliverables_tab():
     post_deliv = data['post_trade']
     
     with col1:
-        pre_total = pre_deliv['Deliverable_Lots'].sum() if not pre_deliv.empty else 0
+        # Convert to numeric to handle mixed types from enhanced clearing file
+        pre_total = pd.to_numeric(pre_deliv['Deliverable_Lots'], errors='coerce').sum() if not pre_deliv.empty else 0
         st.metric("Pre-Trade Deliverable (Lots)", f"{pre_total:,.0f}")
-    
+
     with col2:
-        post_total = post_deliv['Deliverable_Lots'].sum() if not post_deliv.empty else 0
+        # Convert to numeric to handle mixed types from enhanced clearing file
+        post_total = pd.to_numeric(post_deliv['Deliverable_Lots'], errors='coerce').sum() if not post_deliv.empty else 0
         st.metric("Post-Trade Deliverable (Lots)", f"{post_total:,.0f}")
     
     with col3:
@@ -1573,8 +1836,9 @@ def display_deliverables_tab():
         st.metric("Deliverable Change", f"{change:,.0f}", delta=f"{change:+,.0f}")
     
     with col4:
-        pre_iv = pre_deliv['Intrinsic_Value_INR'].sum() if not pre_deliv.empty else 0
-        post_iv = post_deliv['Intrinsic_Value_INR'].sum() if not post_deliv.empty else 0
+        # Convert to numeric to handle mixed types from enhanced clearing file
+        pre_iv = pd.to_numeric(pre_deliv['Intrinsic_Value_INR'], errors='coerce').sum() if not pre_deliv.empty else 0
+        post_iv = pd.to_numeric(post_deliv['Intrinsic_Value_INR'], errors='coerce').sum() if not post_deliv.empty else 0
         iv_change = post_iv - pre_iv
         st.metric("IV Change (INR)", f"{iv_change:,.0f}", delta=f"{iv_change:+,.0f}")
     
@@ -1590,17 +1854,27 @@ def display_deliverables_tab():
     
     with tab3:
         if not pre_deliv.empty and not post_deliv.empty:
+            # Create copies with numeric conversions to handle enhanced clearing file
+            pre_clean = pre_deliv[['Ticker', 'Deliverable_Lots', 'Intrinsic_Value_INR']].copy()
+            post_clean = post_deliv[['Ticker', 'Deliverable_Lots', 'Intrinsic_Value_INR']].copy()
+
+            # Convert to numeric
+            pre_clean['Deliverable_Lots'] = pd.to_numeric(pre_clean['Deliverable_Lots'], errors='coerce')
+            pre_clean['Intrinsic_Value_INR'] = pd.to_numeric(pre_clean['Intrinsic_Value_INR'], errors='coerce')
+            post_clean['Deliverable_Lots'] = pd.to_numeric(post_clean['Deliverable_Lots'], errors='coerce')
+            post_clean['Intrinsic_Value_INR'] = pd.to_numeric(post_clean['Intrinsic_Value_INR'], errors='coerce')
+
             comparison = pd.merge(
-                pre_deliv[['Ticker', 'Deliverable_Lots', 'Intrinsic_Value_INR']],
-                post_deliv[['Ticker', 'Deliverable_Lots', 'Intrinsic_Value_INR']],
+                pre_clean,
+                post_clean,
                 on='Ticker',
                 how='outer',
                 suffixes=('_Pre', '_Post')
             ).fillna(0)
-            
+
             comparison['Deliv_Change'] = comparison['Deliverable_Lots_Post'] - comparison['Deliverable_Lots_Pre']
             comparison['IV_Change'] = comparison['Intrinsic_Value_INR_Post'] - comparison['Intrinsic_Value_INR_Pre']
-            
+
             st.dataframe(comparison, use_container_width=True, hide_index=True)
 
 def display_expiry_deliveries_tab():
@@ -2017,17 +2291,61 @@ def display_downloads():
             except:
                 pass
         
-        # Reconciliation download
+        # PMS Reconciliation download
         if st.session_state.get('recon_file'):
             try:
                 with open(st.session_state.recon_file, 'rb') as f:
                     st.download_button(
-                        "🔄 Reconciliation Report",
+                        "🔄 PMS Reconciliation",
                         f.read(),
                         file_name=Path(st.session_state.recon_file).name,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                         key="dl_recon"
+                    )
+            except:
+                pass
+
+        # Broker Reconciliation downloads
+        if st.session_state.get('broker_recon_report'):
+            try:
+                with open(st.session_state.broker_recon_report, 'rb') as f:
+                    st.download_button(
+                        "🏦 Broker Recon Report",
+                        f.read(),
+                        file_name=Path(st.session_state.broker_recon_report).name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="dl_broker_recon"
+                    )
+            except:
+                pass
+
+        if st.session_state.get('enhanced_clearing_file'):
+            try:
+                with open(st.session_state.enhanced_clearing_file, 'rb') as f:
+                    st.download_button(
+                        "📊 Enhanced Clearing File",
+                        f.read(),
+                        file_name=Path(st.session_state.enhanced_clearing_file).name,
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="dl_enhanced_clearing"
+                    )
+            except:
+                pass
+
+        # Final Enhanced Clearing File (post-trade processing with splits)
+        if st.session_state.get('final_enhanced_clearing_file'):
+            try:
+                with open(st.session_state.final_enhanced_clearing_file, 'rb') as f:
+                    st.download_button(
+                        "✅ Final Enhanced Clearing",
+                        f.read(),
+                        file_name=Path(st.session_state.final_enhanced_clearing_file).name,
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="dl_final_enhanced_clearing"
                     )
             except:
                 pass
@@ -2077,7 +2395,7 @@ def display_downloads():
             except:
                 pass
 
-        if not st.session_state.get('deliverables_file') and not st.session_state.get('recon_file') and not st.session_state.get('positions_by_underlying_file'):
+        if not st.session_state.get('deliverables_file') and not st.session_state.get('recon_file') and not st.session_state.get('positions_by_underlying_file') and not st.session_state.get('broker_recon_report') and not st.session_state.get('enhanced_clearing_file'):
             st.info("Enable additional features in sidebar")
     
     # Add Expiry Deliveries column if available

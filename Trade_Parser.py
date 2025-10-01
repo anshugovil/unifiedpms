@@ -25,15 +25,19 @@ class Position:
     security_type: str  # Futures, Call, Put
     strike_price: float
     lot_size: int
-    
+    # Enhanced fields from broker reconciliation (optional)
+    comms: Optional[float] = None  # Pure brokerage amount
+    taxes: Optional[float] = None  # Total taxes
+    td: Optional[str] = None  # Trade date from broker file
+
     @property
     def is_future(self) -> bool:
         return self.security_type == 'Futures'
-    
+
     @property
     def is_call(self) -> bool:
         return self.security_type == 'Call'
-    
+
     @property
     def is_put(self) -> bool:
         return self.security_type == 'Put'
@@ -181,30 +185,37 @@ class TradeParser:
         return None
     
     def detect_format(self, df: pd.DataFrame) -> str:
-        """Detect if it's MS or GS trade format"""
+        """Detect if it's MS or GS trade format based on header presence"""
+        # Key MS format headers (must have these for MS format)
+        required_ms_headers = ['Instr', 'Symbol', 'Expiry Dt', 'Lots Traded']
+
         # Check if headers contain MS format indicators
         if df.shape[0] > 0:
             first_row = df.iloc[0]
             first_row_str = [str(val).strip() for val in first_row if pd.notna(val)]
 
-            # Check for MS format headers
-            ms_headers = ['CP Code', 'TM Code', 'Scheme', 'TM Name', 'Instr', 'Symbol',
-                         'Expiry Dt', 'Lot Size', 'Strike Price', 'Option Type', 'B/S',
-                         'Qty', 'Lots Traded', 'Avg Price']
-
-            # If we have most of these headers, it's MS format
-            header_matches = sum(1 for h in ms_headers if any(h in s for s in first_row_str))
-            if header_matches >= 5:  # At least 5 matching headers
-                logger.info(f"Detected MS trade format (header match: {header_matches}/14)")
+            # Check if required headers are present in first row
+            header_matches = sum(1 for h in required_ms_headers if any(h in s for s in first_row_str))
+            if header_matches >= 3:  # At least 3 of 4 key headers
+                logger.info(f"Detected MS trade format (header match: {header_matches}/{len(required_ms_headers)})")
                 return 'MS'
 
-        # Check column count and content
-        if df.shape[1] == 14:
+        # Also check if DataFrame columns already have these headers (file was read with header=0)
+        if hasattr(df, 'columns'):
+            col_names = [str(col).strip() for col in df.columns]
+            col_matches = sum(1 for h in required_ms_headers if any(h in s for s in col_names))
+
+            if col_matches >= 3:
+                logger.info(f"Detected MS trade format from column names (match: {col_matches}/{len(required_ms_headers)})")
+                return 'MS'
+
+        # Fallback: Check column count and content patterns
+        if df.shape[1] >= 14:
             try:
                 # Check the 5th column (index 4) for instrument types
                 col4_vals = df.iloc[:, 4].dropna().astype(str).str.upper()
                 if any(val in ['OPTSTK', 'OPTIDX', 'FUTSTK', 'FUTIDX'] for val in col4_vals):
-                    logger.info("Detected MS trade format (14 columns)")
+                    logger.info(f"Detected MS trade format from column content ({df.shape[1]} columns)")
                     return 'MS'
             except:
                 pass
@@ -307,12 +318,33 @@ class TradeParser:
                 
                 if lots == 0:
                     continue
-                
+
+                # Extract enhanced fields if present (from broker reconciliation)
+                comms = None
+                taxes = None
+                td = None
+                if 'Comms' in row.index and pd.notna(row.get('Comms')):
+                    try:
+                        comms = float(row.get('Comms'))
+                    except (ValueError, TypeError):
+                        comms = None
+
+                if 'Taxes' in row.index and pd.notna(row.get('Taxes')):
+                    try:
+                        taxes = float(row.get('Taxes'))
+                    except (ValueError, TypeError):
+                        taxes = None
+
+                if 'TD' in row.index and pd.notna(row.get('TD')):
+                    td = str(row.get('TD')).strip()
+                    if not td:
+                        td = None
+
                 # Parse expiry date
                 expiry = self._parse_date(expiry_str)
                 if not expiry:
                     continue
-                
+
                 # Determine security type
                 if 'FUT' in instr:
                     security_type = 'Futures'
@@ -371,7 +403,10 @@ class TradeParser:
                     position_lots=trade_lots,  # Individual trade quantity with sign
                     security_type=security_type,
                     strike_price=strike,
-                    lot_size=lot_size
+                    lot_size=lot_size,
+                    comms=comms,  # From broker reconciliation (optional)
+                    taxes=taxes,  # From broker reconciliation (optional)
+                    td=td  # Trade date from broker file (optional)
                 )
                 
                 trades.append(trade)

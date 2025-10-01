@@ -26,7 +26,7 @@ class ACMMapper:
     # HARDCODED DEFAULT SCHEMA
     DEFAULT_COLUMNS = [
         "Trade Date",
-        "Settle Date", 
+        "Settle Date",
         "Account Id",
         "Counterparty Code",
         "Identifier",
@@ -41,7 +41,12 @@ class ACMMapper:
         "Executing Broker Name",
         "Trade Venue",
         "Notes",
-        "Transaction Type"
+        "Transaction Type",
+        "Brokerage",
+        "Taxes",
+        "Comms",  # Pure brokerage from broker reconciliation
+        "Broker Taxes",  # Taxes from broker reconciliation
+        "Broker Trade Date"  # Trade date from broker file
     ]
     
     DEFAULT_MANDATORY = [
@@ -286,21 +291,29 @@ class ACMMapper:
         
         # Get current timestamps
         now_sg = datetime.now(self.singapore_tz)
-        
+
         # UPDATED DATE FORMATTING:
-        # Trade Date: Keep as datetime with time
-        trade_date_str = now_sg.strftime("%m/%d/%Y %H:%M:%S")
-        
+        # Trade Date: Use from input if available (from broker recon), otherwise current time
+        if "Trade Date" in input_df.columns and input_df["Trade Date"].notna().any():
+            # Use trade date from input (broker reconciliation)
+            trade_date_str = input_df["Trade Date"].astype(str)
+        else:
+            # Use current datetime
+            trade_date_str = now_sg.strftime("%m/%d/%Y %H:%M:%S")
+
         # Settle Date: Date only, no time
         settle_date_str = now_sg.strftime("%m/%d/%Y")
-        
+
         # ==================
         # APPLY MAPPINGS
         # ==================
-        
+
         # Dates - UPDATED FORMATTING
         if "Trade Date" in out.columns:
-            out["Trade Date"] = trade_date_str  # Datetime with time
+            if isinstance(trade_date_str, str):
+                out["Trade Date"] = trade_date_str  # Single value for all rows
+            else:
+                out["Trade Date"] = trade_date_str  # Series from input
         if "Settle Date" in out.columns:
             out["Settle Date"] = settle_date_str  # Date only
         
@@ -412,7 +425,33 @@ class ACMMapper:
                         self.map_transaction_type(bs, "No")
                         for bs in input_df[bs_col]
                     ]
-        
+
+        # Brokerage (from broker reconciliation)
+        if "Brokerage" in out.columns:
+            if "Pure Brokerage AMT" in input_df.columns:
+                out["Brokerage"] = pd.to_numeric(input_df["Pure Brokerage AMT"], errors="coerce").fillna(0)
+
+        # Taxes (from broker reconciliation)
+        if "Taxes" in out.columns:
+            if "Total Taxes" in input_df.columns:
+                out["Taxes"] = pd.to_numeric(input_df["Total Taxes"], errors="coerce").fillna(0)
+
+        # NEW: Enhanced columns from trade processing (EOD mode with broker reconciliation)
+        # Comms - Pure brokerage from broker reconciliation (proportionally split for split trades)
+        if "Comms" in out.columns:
+            if "Comms" in input_df.columns:
+                out["Comms"] = pd.to_numeric(input_df["Comms"], errors="coerce").fillna("")
+
+        # Broker Taxes - Taxes from broker reconciliation (proportionally split for split trades)
+        if "Broker Taxes" in out.columns:
+            if "Taxes" in input_df.columns:
+                out["Broker Taxes"] = pd.to_numeric(input_df["Taxes"], errors="coerce").fillna("")
+
+        # Broker Trade Date - Trade date from broker file (same for all splits)
+        if "Broker Trade Date" in out.columns:
+            if "TD" in input_df.columns:
+                out["Broker Trade Date"] = input_df["TD"].astype(str).replace('nan', '').replace('', '')
+
         # Clean up
         out = out.fillna("")
         for col in out.columns:

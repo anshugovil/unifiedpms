@@ -156,8 +156,9 @@ class DeliverableCalculator:
                     # OTM Call - expires worthless
                     deliverable = 0
                 else:
-                    # No price available - cannot determine ITM/OTM
-                    deliverable = None  # Will be shown as "Price Required"
+                    # No price available - assume 0 (cannot determine ITM/OTM)
+                    deliverable = 0
+                    logger.warning(f"No price for {symbol} ({ticker}), assuming 0 deliverable for Call")
             elif security_type == 'Put':
                 if spot_price > 0 and spot_price < strike:
                     # ITM Put - will be exercised
@@ -166,8 +167,9 @@ class DeliverableCalculator:
                     # OTM Put - expires worthless
                     deliverable = 0
                 else:
-                    # No price available - cannot determine ITM/OTM
-                    deliverable = None  # Will be shown as "Price Required"
+                    # No price available - assume 0 (cannot determine ITM/OTM)
+                    deliverable = 0
+                    logger.warning(f"No price for {symbol} ({ticker}), assuming 0 deliverable for Put")
             else:
                 deliverable = 0
             
