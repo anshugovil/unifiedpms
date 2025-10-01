@@ -570,8 +570,13 @@ def main():
         
         with col1:
             if st.button("🚀 Run Stage 1", type="primary", use_container_width=True, disabled=not can_process_stage1):
+                # Get account prefix
+                account_prefix = ""
+                if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+                    account_prefix = st.session_state.account_validator.get_account_prefix()
+
                 process_stage1(position_file, trade_file, mapping_file, use_default_mapping, default_mapping,
-                             position_password, trade_password)
+                             position_password, trade_password, account_prefix)
         
         with col2:
             if st.button("🎯 Run Stage 2", type="secondary", use_container_width=True, disabled=not can_process_stage2):
@@ -581,19 +586,23 @@ def main():
         if can_process_stage1:
             st.divider()
             if st.button("⚡ Run Complete Enhanced Pipeline", type="primary", use_container_width=True):
+                # Get account prefix
+                account_prefix = ""
+                if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+                    account_prefix = st.session_state.account_validator.get_account_prefix()
 
                 # Run Stage 1
                 if process_stage1(position_file, trade_file, mapping_file, use_default_mapping, default_mapping,
-                                position_password, trade_password):
+                                position_password, trade_password, account_prefix):
                     # Run Stage 2
-                    process_stage2("Use built-in schema (default)", None)
+                    process_stage2("Use built-in schema (default)", None, account_prefix)
 
                     # Run deliverables (always enabled)
-                    run_deliverables_calculation(st.session_state.get('usdinr_rate', 88.0))
+                    run_deliverables_calculation(st.session_state.get('usdinr_rate', 88.0), account_prefix)
 
                     # Run expiry deliveries (always enabled)
                     if EXPIRY_DELIVERY_AVAILABLE:
-                        run_expiry_delivery_generation()
+                        run_expiry_delivery_generation(account_prefix)
 
                     # Run PMS recon if enabled
                     if enable_recon and pms_file:
@@ -683,7 +692,7 @@ def main():
 # Processing Functions
 
 def process_stage1(position_file, trade_file, mapping_file, use_default, default_path,
-                  position_password=None, trade_password=None):
+                  position_password=None, trade_password=None, account_prefix=""):
     """Process Stage 1: Strategy Assignment with encrypted file support"""
     try:
         with st.spinner("Processing Stage 1: Strategy Assignment..."):
@@ -778,9 +787,9 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
             trade_processor = TradeProcessor(position_manager)
             # Create OutputGenerator with appropriate path
             if is_streamlit_cloud():
-                output_gen = OutputGenerator(str(get_temp_dir() / "stage1"))
+                output_gen = OutputGenerator(str(get_temp_dir() / "stage1"), account_prefix=account_prefix)
             else:
-                output_gen = OutputGenerator("output/stage1")
+                output_gen = OutputGenerator("output/stage1", account_prefix=account_prefix)
             
             parsed_trades_df = output_gen.create_trade_dataframe_from_positions(trades)
             processed_trades_df = trade_processor.process_trades(trades, trade_df)
@@ -829,7 +838,7 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
         st.code(traceback.format_exc())
         return False
 
-def process_stage2(schema_option, custom_schema_file):
+def process_stage2(schema_option, custom_schema_file, account_prefix=""):
     """Process Stage 2: ACM Mapping"""
     try:
         with st.spinner("Processing Stage 2: ACM Mapping..."):
@@ -872,13 +881,13 @@ def process_stage2(schema_option, custom_schema_file):
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            acm_file = output_dir / f"acm_listedtrades_{timestamp}.csv"
+            acm_file = output_dir / f"{account_prefix}acm_listedtrades_{timestamp}.csv"
             mapped_df.to_csv(acm_file, index=False)
-            
-            errors_file = output_dir / f"acm_listedtrades_{timestamp}_errors.csv"
+
+            errors_file = output_dir / f"{account_prefix}acm_listedtrades_{timestamp}_errors.csv"
             errors_df.to_csv(errors_file, index=False)
-            
-            schema_file = output_dir / f"acm_schema_used_{timestamp}.xlsx"
+
+            schema_file = output_dir / f"{account_prefix}acm_schema_used_{timestamp}.xlsx"
             schema_bytes = acm_mapper.generate_schema_excel()
             with open(schema_file, 'wb') as f:
                 f.write(schema_bytes)
@@ -914,7 +923,7 @@ def process_stage2(schema_option, custom_schema_file):
         st.code(traceback.format_exc())
         return False
 
-def run_deliverables_calculation(usdinr_rate: float):
+def run_deliverables_calculation(usdinr_rate: float, account_prefix=""):
     """Run deliverables and IV calculations using centralized price manager"""
     if not NEW_FEATURES_AVAILABLE:
         st.error("Deliverables module not available")
@@ -959,9 +968,9 @@ def run_deliverables_calculation(usdinr_rate: float):
                 st.warning("Price manager not initialized. Please fetch or upload prices first.")
             
             calc = DeliverableCalculator(usdinr_rate)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = get_output_path(f"DELIVERABLES_REPORT_{timestamp}.xlsx")
+            output_file = get_output_path(f"{account_prefix}DELIVERABLES_REPORT_{timestamp}.xlsx")
             
             calc.generate_deliverables_report(
                 starting_positions,
@@ -1019,7 +1028,7 @@ def run_deliverables_calculation(usdinr_rate: float):
         st.error(f"❌ Error calculating deliverables: {str(e)}")
         logger.error(traceback.format_exc())
 
-def run_expiry_delivery_generation():
+def run_expiry_delivery_generation(account_prefix=""):
     """Generate physical delivery outputs per expiry date"""
     if not EXPIRY_DELIVERY_AVAILABLE:
         st.error("Expiry Delivery Generator module not available. Please ensure expiry_delivery_module.py is in the directory.")
