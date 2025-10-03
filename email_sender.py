@@ -176,7 +176,8 @@ class EmailSender:
                             account_prefix: str,
                             timestamp: str,
                             output_files: Dict[str, Path],
-                            stats: Dict) -> bool:
+                            stats: Dict,
+                            file_filter: Dict[str, bool] = None) -> bool:
         """
         Send Stage 1 completion email
 
@@ -186,14 +187,48 @@ class EmailSender:
             timestamp: Processing timestamp
             output_files: Dictionary of output files
             stats: Processing statistics
+            file_filter: Dictionary of file type filters (csv, summary, missing, recon)
         """
-        # Create file list HTML
+        # Default: attach all files if no filter provided
+        if file_filter is None:
+            file_filter = {
+                'csv': True,
+                'summary': True,
+                'missing': True,
+                'recon': True
+            }
+
+        # Categorize files
+        csv_files = ['parsed_trades', 'parsed_positions', 'final_positions', 'position_summary']
+        summary_files = ['position_summary', 'enhanced_clearing']
+        missing_files = ['missing_tickers', 'missing_strategies']
+        recon_files = ['broker_recon_report', 'enhanced_clearing']
+
+        # Create file list HTML and attachments
         file_list = ""
         attachments = []
         for file_type, file_path in output_files.items():
             if file_path and Path(file_path).exists():
+                # Determine if this file should be included
+                include = False
+                if file_filter.get('csv', True) and file_type in csv_files:
+                    include = True
+                if file_filter.get('summary', True) and file_type in summary_files:
+                    include = True
+                if file_filter.get('missing', True) and file_type in missing_files:
+                    include = True
+                if file_filter.get('recon', True) and file_type in recon_files:
+                    include = True
+
+                # Always list in email body
                 file_list += f"<li>{Path(file_path).name}</li>"
-                attachments.append(file_path)
+
+                # Only attach if included in filter
+                if include:
+                    # Check file size (skip files > 5MB)
+                    file_size = Path(file_path).stat().st_size / (1024 * 1024)  # MB
+                    if file_size <= 5:
+                        attachments.append(file_path)
 
         # Format fund name and date
         fund_name = self._get_fund_name(account_prefix)

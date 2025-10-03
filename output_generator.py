@@ -43,7 +43,8 @@ class OutputGenerator:
                         input_parser=None,
                         trade_parser=None,
                         send_email: bool = False,
-                        email_recipients: List[str] = None) -> Dict[str, Path]:
+                        email_recipients: List[str] = None,
+                        email_file_filter: Dict[str, bool] = None) -> Dict[str, Path]:
         """
         Save all output files with proper date formatting
         Returns dictionary of file type to file path
@@ -102,6 +103,7 @@ class OutputGenerator:
             self._send_completion_email(
                 output_files=output_files,
                 email_recipients=email_recipients,
+                file_filter=email_file_filter,
                 stats={
                     'total_trades': len(parsed_trades_df),
                     'starting_positions': len(starting_positions_df),
@@ -566,7 +568,8 @@ class OutputGenerator:
         
         return pd.DataFrame(trades_data)
 
-    def _send_completion_email(self, output_files: Dict[str, Path], email_recipients: List[str], stats: Dict):
+    def _send_completion_email(self, output_files: Dict[str, Path], email_recipients: List[str],
+                               file_filter: Dict[str, bool], stats: Dict):
         """Send email notification when processing is complete"""
         if not email_recipients:
             logger.info("No email recipients specified - skipping email")
@@ -593,7 +596,8 @@ class OutputGenerator:
                 account_prefix=self.account_prefix,
                 timestamp=self.timestamp,
                 output_files=output_files,
-                stats=stats
+                stats=stats,
+                file_filter=file_filter
             )
 
             if success:

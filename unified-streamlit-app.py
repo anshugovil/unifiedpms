@@ -830,6 +830,47 @@ def main():
 
                 st.session_state.email_recipients = all_recipients
                 st.caption(f"📧 Total: {len(all_recipients)} recipient(s)")
+
+                # File attachments configuration
+                with st.expander("📎 Attachment Settings"):
+                    st.caption("Select which files to attach to emails")
+
+                    # Initialize defaults if not set
+                    if 'email_attach_csv' not in st.session_state:
+                        st.session_state.email_attach_csv = True
+                    if 'email_attach_summary' not in st.session_state:
+                        st.session_state.email_attach_summary = True
+                    if 'email_attach_missing' not in st.session_state:
+                        st.session_state.email_attach_missing = True
+                    if 'email_attach_recon' not in st.session_state:
+                        st.session_state.email_attach_recon = True
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.session_state.email_attach_csv = st.checkbox(
+                            "CSV Output Files",
+                            value=st.session_state.email_attach_csv,
+                            help="Parsed trades, positions, etc."
+                        )
+                        st.session_state.email_attach_summary = st.checkbox(
+                            "Summary Reports",
+                            value=st.session_state.email_attach_summary,
+                            help="Position summaries, statistics"
+                        )
+
+                    with col2:
+                        st.session_state.email_attach_missing = st.checkbox(
+                            "Missing Mappings",
+                            value=st.session_state.email_attach_missing,
+                            help="Missing ticker/strategy mappings"
+                        )
+                        st.session_state.email_attach_recon = st.checkbox(
+                            "Reconciliation Reports",
+                            value=st.session_state.email_attach_recon,
+                            help="Broker recon, enhanced clearing files"
+                        )
+
+                    st.caption("ℹ️ Large Excel files (>5MB) are excluded automatically")
         elif EMAIL_AVAILABLE and not email_configured:
             st.warning("⚠️ Email not configured")
             with st.expander("ℹ️ Setup Instructions"):
@@ -1071,6 +1112,16 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
             st.session_state.final_enhanced_clearing_file = str(final_enhanced_file)
 
             # Generate output files
+            # Prepare file filter for email attachments
+            email_file_filter = None
+            if st.session_state.get('send_email', False):
+                email_file_filter = {
+                    'csv': st.session_state.get('email_attach_csv', True),
+                    'summary': st.session_state.get('email_attach_summary', True),
+                    'missing': st.session_state.get('email_attach_missing', True),
+                    'recon': st.session_state.get('email_attach_recon', True)
+                }
+
             output_files = output_gen.save_all_outputs(
                 parsed_trades_df,
                 starting_positions_df,
@@ -1080,7 +1131,8 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
                 input_parser=input_parser,
                 trade_parser=trade_parser,
                 send_email=st.session_state.get('send_email', False),
-                email_recipients=st.session_state.get('email_recipients', [])
+                email_recipients=st.session_state.get('email_recipients', []),
+                email_file_filter=email_file_filter
             )
             
             # Store in session state
