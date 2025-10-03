@@ -892,7 +892,89 @@ class TradeReconciler:
 
                 unmatched_broker_df.to_excel(writer, sheet_name='Unmatched Broker', index=False)
 
-                # Sheet 4: Summary
+                # Sheet 4: Commission Report - Average commission rate by broker
+                if matched:
+                    comm_report_rows = []
+                    for match in matched:
+                        broker_row = broker_df.iloc[match['broker_idx']]
+                        clear_row = clearing_df.iloc[match['clearing_idx']]
+
+                        # Calculate commission rate: brokerage / (price * quantity)
+                        price = broker_row.get('price', 0)
+                        quantity = broker_row.get('quantity', 0)
+                        brokerage = broker_row.get('pure_brokerage', 0)
+
+                        trade_value = price * quantity
+                        comm_rate = (brokerage / trade_value * 100) if trade_value > 0 else 0
+
+                        comm_report_rows.append({
+                            'Broker Name': broker_row.get('broker_name', ''),
+                            'Broker Code': broker_row.get('broker_code', ''),
+                            'Bloomberg Ticker': broker_row.get('bloomberg_ticker', ''),
+                            'Side': broker_row.get('side', ''),
+                            'Quantity': quantity,
+                            'Price': price,
+                            'Trade Value': trade_value,
+                            'Brokerage': brokerage,
+                            'Comm Rate (%)': comm_rate
+                        })
+
+                    comm_report_df = pd.DataFrame(comm_report_rows)
+
+                    # Add summary by broker at the bottom
+                    if not comm_report_df.empty:
+                        # Group by broker
+                        broker_summary = comm_report_df.groupby(['Broker Name', 'Broker Code']).agg({
+                            'Trade Value': 'sum',
+                            'Brokerage': 'sum',
+                            'Quantity': 'count'  # Number of trades
+                        }).reset_index()
+
+                        # Calculate average commission rate for each broker
+                        broker_summary['Avg Comm Rate (%)'] = (
+                            broker_summary['Brokerage'] / broker_summary['Trade Value'] * 100
+                        ).round(4)
+
+                        # Rename count column
+                        broker_summary = broker_summary.rename(columns={'Quantity': 'Number of Trades'})
+
+                        # Add separator rows and summary
+                        separator_row = pd.DataFrame([{col: '' for col in comm_report_df.columns}])
+                        summary_header = pd.DataFrame([{
+                            'Broker Name': 'BROKER SUMMARY',
+                            **{col: '' for col in comm_report_df.columns if col != 'Broker Name'}
+                        }])
+
+                        # Map summary columns to match report columns
+                        broker_summary_mapped = pd.DataFrame([{
+                            'Broker Name': row['Broker Name'],
+                            'Broker Code': row['Broker Code'],
+                            'Bloomberg Ticker': f"{row['Number of Trades']} trades",
+                            'Side': '',
+                            'Quantity': '',
+                            'Price': '',
+                            'Trade Value': row['Trade Value'],
+                            'Brokerage': row['Brokerage'],
+                            'Comm Rate (%)': row['Avg Comm Rate (%)']
+                        } for _, row in broker_summary.iterrows()])
+
+                        # Combine all
+                        comm_report_df = pd.concat([
+                            comm_report_df,
+                            separator_row,
+                            summary_header,
+                            broker_summary_mapped
+                        ], ignore_index=True)
+
+                    comm_report_df.to_excel(writer, sheet_name='Commission Report', index=False)
+                else:
+                    # Empty commission report
+                    empty_comm = pd.DataFrame(columns=['Broker Name', 'Broker Code', 'Bloomberg Ticker',
+                                                       'Side', 'Quantity', 'Price', 'Trade Value',
+                                                       'Brokerage', 'Comm Rate (%)'])
+                    empty_comm.to_excel(writer, sheet_name='Commission Report', index=False)
+
+                # Sheet 5: Summary
                 summary_data = {
                     'Metric': [
                         'Total Clearing Trades',
