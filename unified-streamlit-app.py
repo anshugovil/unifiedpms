@@ -785,9 +785,9 @@ def main():
                 Then restart the Streamlit app.
                 """)
         else:
-            # Check if email is configured
+            # Check if email is configured from Streamlit secrets
             try:
-                email_config = EmailConfig.from_env()
+                email_config = EmailConfig.from_streamlit_secrets()
                 email_configured = email_config.is_configured()
             except:
                 email_configured = False
@@ -831,18 +831,26 @@ def main():
                 st.session_state.email_recipients = all_recipients
                 st.caption(f"📧 Total: {len(all_recipients)} recipient(s)")
         elif EMAIL_AVAILABLE and not email_configured:
-            st.warning("Email not configured")
+            st.warning("⚠️ Email not configured")
             with st.expander("ℹ️ Setup Instructions"):
                 st.markdown("""
-                To enable email notifications, set these environment variables:
+                To enable email notifications, configure Streamlit secrets:
 
-                ```bash
-                SENDGRID_API_KEY=your_api_key_here
-                SENDGRID_FROM_EMAIL=agovil@aurigincm.com
-                SENDGRID_FROM_NAME=Aurigin Trade Processing
+                1. Create a `.streamlit/secrets.toml` file in your project directory
+                2. Add the following:
+
+                ```toml
+                SENDGRID_API_KEY = "your_api_key_here"
+                SENDGRID_FROM_EMAIL = "agovil@aurigincm.com"
+                SENDGRID_FROM_NAME = "Aurigin Trade Processing"
                 ```
 
-                Or create a `.env` file in the project root with these values.
+                3. Restart the Streamlit app
+
+                **For Streamlit Cloud:**
+                - Go to your app settings
+                - Navigate to "Secrets" section
+                - Add the same configuration in TOML format
                 """)
 
     # Main content tabs

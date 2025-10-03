@@ -1,6 +1,6 @@
-# Email Notification Setup Guide
+# Email Configuration Setup
 
-This guide will help you set up email notifications using SendGrid for your trade processing system.
+The application uses **Streamlit Secrets** to manage email credentials securely.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ This guide will help you set up email notifications using SendGrid for your trad
 ## Step 1: Install Dependencies
 
 ```bash
-pip install sendgrid python-dotenv
+pip install sendgrid
 ```
 
 Or install all requirements:
@@ -39,69 +39,42 @@ pip install -r requirements.txt
    - Use an email you have access to (e.g., `noreply@yourdomain.com`)
    - Check your email and click the verification link
 
-## Step 4: Configure Environment Variables
+## Step 4: Configure Streamlit Secrets
 
-### Option A: Using .env file (Recommended)
+### For Local Development:
 
-1. Copy the example file:
+1. Create `.streamlit` directory (if it doesn't exist):
    ```bash
-   cp .env.example .env
+   mkdir .streamlit
    ```
 
-2. Edit `.env` file:
+2. Create `.streamlit/secrets.toml` file:
    ```bash
-   SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   SENDGRID_FROM_EMAIL=noreply@yourdomain.com
-   SENDGRID_FROM_NAME=Trade Processing System
+   # Copy the example
+   cp .streamlit/secrets.toml.example .streamlit/secrets.toml
    ```
 
-3. The app will automatically load these variables
+3. Edit `.streamlit/secrets.toml` with your credentials:
+   ```toml
+   SENDGRID_API_KEY = "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"
+   SENDGRID_FROM_EMAIL = "agovil@aurigincm.com"
+   SENDGRID_FROM_NAME = "Aurigin Trade Processing"
+   ```
 
-### Option B: Using System Environment Variables
+### For Streamlit Cloud:
 
-#### Windows (PowerShell):
-```powershell
-$env:SENDGRID_API_KEY="SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-$env:SENDGRID_FROM_EMAIL="noreply@yourdomain.com"
-$env:SENDGRID_FROM_NAME="Trade Processing System"
-```
+1. Deploy your app to Streamlit Cloud
+2. Go to your app settings (⋮ menu → Settings)
+3. Navigate to "Secrets" in the left sidebar
+4. Add your secrets in TOML format:
+   ```toml
+   SENDGRID_API_KEY = "SG.your_api_key_here"
+   SENDGRID_FROM_EMAIL = "agovil@aurigincm.com"
+   SENDGRID_FROM_NAME = "Aurigin Trade Processing"
+   ```
+5. Save and restart the app
 
-#### Windows (Command Prompt):
-```cmd
-set SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-set SENDGRID_FROM_EMAIL=noreply@yourdomain.com
-set SENDGRID_FROM_NAME=Trade Processing System
-```
-
-#### Linux/Mac:
-```bash
-export SENDGRID_API_KEY="SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export SENDGRID_FROM_EMAIL="noreply@yourdomain.com"
-export SENDGRID_FROM_NAME="Trade Processing System"
-```
-
-## Step 5: Test Email Configuration
-
-Run the test script:
-
-```bash
-python email_sender.py
-```
-
-Expected output:
-```
-Email Configuration Test
-==================================================
-Configured: True
-API Key: ***xxxx
-From Email: noreply@yourdomain.com
-From Name: Trade Processing System
-==================================================
-
-Email sending enabled: True
-```
-
-## Step 6: Use in Streamlit App
+## Step 5: Use in Streamlit App
 
 1. Start the Streamlit app:
    ```bash
@@ -138,20 +111,27 @@ Emails automatically include relevant files:
 
 **Note**: SendGrid has attachment size limits (30MB total). Large Excel files are not attached by default.
 
+## Email Recipients
+
+- **Default recipient**: `operations@aurigincm.com` (always included)
+- **Additional recipients**: Can be added via UI (comma-separated)
+
 ## Troubleshooting
+
+### "⚠️ Email not configured" warning
+
+1. Check `.streamlit/secrets.toml` file exists
+2. Verify all three keys are present (SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME)
+3. Check TOML syntax - values must be in quotes
+4. Restart Streamlit app after creating/editing secrets
 
 ### Email not sending
 
 1. **Check API Key**: Make sure it's correct and has Full Access permissions
-2. **Check Sender Email**: Must be verified in SendGrid
-3. **Check Logs**: Look for error messages in console/terminal
+2. **Check Sender Email**: `agovil@aurigincm.com` must be verified in SendGrid
+3. **Check Logs**: Look for error messages in Streamlit console
 4. **Free Tier Limits**: SendGrid free tier has 100 emails/day limit
-
-### "Email not configured" message
-
-1. Make sure environment variables are set
-2. Restart the Streamlit app after setting variables
-3. Check `.env` file syntax (no spaces around `=`)
+5. **Check SendGrid Activity**: https://app.sendgrid.com/email_activity
 
 ### Emails going to spam
 
@@ -169,11 +149,11 @@ For production use with higher volumes, consider upgrading to a paid plan.
 
 ## Security Best Practices
 
-1. ✅ **Never commit `.env` file** to git (already in .gitignore)
+1. ✅ **Never commit `.streamlit/secrets.toml`** to git (already in .gitignore)
 2. ✅ **Use environment-specific API keys** (dev vs production)
 3. ✅ **Rotate API keys** periodically
-4. ✅ **Use least-privilege permissions** (create separate API keys for different apps)
-5. ✅ **Store production keys** in secure vault (Azure Key Vault, AWS Secrets Manager, etc.)
+4. ✅ **Use Streamlit Cloud secrets** for production deployments
+5. ✅ **Keep API keys confidential** - never share in public channels
 
 ## Support
 

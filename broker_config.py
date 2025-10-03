@@ -59,6 +59,13 @@ BROKER_REGISTRY = {
         'parser_class': 'MorganStanleyParser',
         'file_patterns': ['morgan', 'MORGAN', 'MS', 'ms'],
         'description': 'Morgan Stanley executing broker'
+    },
+    'ANTIQUE': {
+        'name': 'Antique Stock Broking',
+        'broker_code': 12987,
+        'parser_class': 'AntiqueParser',
+        'file_patterns': ['antique', 'ANTIQUE'],
+        'description': 'Antique Stock Broking executing broker'
     }
 }
 

@@ -1553,6 +1553,169 @@ class MorganStanleyParser(BrokerParserBase):
             return pd.DataFrame()
 
 
+class AntiqueParser(BrokerParserBase):
+    """Parser for Antique Securities files"""
+
+    def _parse_expiry_date(self, expiry_value) -> Optional[datetime]:
+        """Parse expiry date from various formats"""
+        # If already a datetime/Timestamp, return it
+        if isinstance(expiry_value, (datetime, pd.Timestamp)):
+            return expiry_value.to_pydatetime() if isinstance(expiry_value, pd.Timestamp) else expiry_value
+
+        # If string, try to parse it
+        try:
+            expiry_str = str(expiry_value).strip()
+            # Try common formats
+            for fmt in ['%d/%m/%Y', '%d/%m/%y', '%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y']:
+                try:
+                    return datetime.strptime(expiry_str, fmt)
+                except:
+                    continue
+            logger.warning(f"Could not parse expiry date: {expiry_value}")
+            return None
+        except:
+            logger.warning(f"Could not parse expiry date: {expiry_value}")
+            return None
+
+    def parse_file(self, file_obj) -> pd.DataFrame:
+        """Parse Antique broker file"""
+        try:
+            # Try to decrypt if password-protected
+            file_obj.seek(0)
+            decrypted_file = decrypt_excel_file(file_obj)
+            if decrypted_file:
+                file_obj = decrypted_file
+
+            # Read Excel file
+            df = pd.read_excel(file_obj)
+
+            logger.info(f"Read Antique file with {len(df)} rows")
+
+            # Expected columns
+            required_cols = ['CP Code', 'Scrip Code', 'Strike Price', 'Call / Put', 'Expiry',
+                           'Buy / Sell', 'Qty', 'Mkt. Rate', 'Pure Brokerage AMT', 'Total Taxes', 'Trade Date']
+
+            # Check if required columns exist
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                logger.error(f"Missing columns in Antique file: {missing_cols}")
+                return pd.DataFrame()
+
+            # Process each row
+            parsed_rows = []
+
+            for idx, row in df.iterrows():
+                try:
+                    # Get scrip code (symbol)
+                    scrip_code = str(row['Scrip Code']).strip().upper()
+
+                    # Determine if index or stock
+                    index_symbols = ['NIFTY', 'NSEBANK', 'MIDCAPNIFTY', 'BANKNIFTY', 'FINNIFTY']
+                    is_index = scrip_code in index_symbols
+
+                    # Get segment type if available
+                    segment_type = ''
+                    if 'Segment Type' in df.columns:
+                        segment_type = str(row['Segment Type']).strip().upper()
+
+                    # Get Call/Put to determine if futures or options
+                    call_put = str(row['Call / Put']).strip().upper() if pd.notna(row['Call / Put']) else ''
+
+                    # Determine instrument and security type
+                    if not call_put or call_put == 'NAN' or call_put == '' or call_put == 'XX':
+                        # Blank or XX = Futures
+                        instrument = 'FUTIDX' if is_index else 'FUTSTK'
+                        security_type = 'Futures'
+                        strike = 0
+                    elif call_put in ['CALL', 'C', 'CE']:
+                        # Call option
+                        instrument = 'OPTIDX' if is_index else 'OPTSTK'
+                        security_type = 'Call'
+                        strike = float(row['Strike Price']) if pd.notna(row['Strike Price']) else 0
+                    elif call_put in ['PUT', 'P', 'PE']:
+                        # Put option
+                        instrument = 'OPTIDX' if is_index else 'OPTSTK'
+                        security_type = 'Put'
+                        strike = float(row['Strike Price']) if pd.notna(row['Strike Price']) else 0
+                    else:
+                        logger.warning(f"Unknown Call/Put value: {call_put} at row {idx}")
+                        continue
+
+                    # Get ticker for symbol
+                    ticker = self._get_ticker_for_symbol(scrip_code)
+                    if not ticker:
+                        ticker = scrip_code  # Use scrip code as ticker if not found
+
+                    # Parse expiry date
+                    expiry = self._parse_expiry_date(row['Expiry'])
+                    if not expiry:
+                        logger.warning(f"Could not parse expiry at row {idx}")
+                        continue
+
+                    # Generate Bloomberg ticker
+                    bloomberg_ticker = self._generate_bloomberg_ticker(
+                        ticker, expiry, security_type, strike, instrument
+                    )
+
+                    # Normalize B/S
+                    side = str(row['Buy / Sell']).strip()
+                    side_normalized = 'Buy' if side.upper().startswith('B') else 'Sell'
+
+                    # Parse quantity
+                    quantity = int(row['Qty'])
+
+                    # Get CP code
+                    cp_code = str(row['CP Code']).strip().upper()
+
+                    # Get trade date - handle Timestamp objects
+                    trade_date_val = row['Trade Date']
+                    if pd.notna(trade_date_val):
+                        if isinstance(trade_date_val, (datetime, pd.Timestamp)):
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
+                        else:
+                            trade_date = str(trade_date_val).strip()
+                    else:
+                        trade_date = ''
+
+                    # Build parsed row
+                    parsed_row = {
+                        'bloomberg_ticker': bloomberg_ticker,
+                        'cp_code': cp_code,
+                        'broker_code': 12987,  # Antique code
+                        'side': side_normalized,
+                        'quantity': quantity,
+                        'price': float(row['Mkt. Rate']),
+                        'pure_brokerage': float(row['Pure Brokerage AMT']),
+                        'total_taxes': round(float(row['Total Taxes']), 2),
+                        'trade_date': trade_date,
+                        'symbol': scrip_code,
+                        'instrument': instrument,
+                        'security_type': security_type,
+                        'strike': strike,
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
+                        'ticker': ticker
+                    }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
+
+                    parsed_rows.append(parsed_row)
+
+                except Exception as e:
+                    logger.warning(f"Error parsing Antique row {idx}: {e}")
+                    continue
+
+            result_df = pd.DataFrame(parsed_rows)
+            logger.info(f"Parsed {len(result_df)} Antique trades with Bloomberg tickers")
+            return result_df
+
+        except Exception as e:
+            logger.error(f"Error parsing Antique file: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return pd.DataFrame()
+
+
 def get_parser_for_broker(broker_id: str, futures_mapping_file: str = "futures mapping.csv"):
     """Get parser instance for a broker"""
     if broker_id == 'ICICI':
@@ -1571,6 +1734,8 @@ def get_parser_for_broker(broker_id: str, futures_mapping_file: str = "futures m
         return EdelweissParser(futures_mapping_file)  # Same format as Edelweiss
     elif broker_id == 'MORGAN':
         return MorganStanleyParser(futures_mapping_file)
+    elif broker_id == 'ANTIQUE':
+        return AntiqueParser(futures_mapping_file)
     else:
         logger.error(f"Unknown broker: {broker_id}")
         return None

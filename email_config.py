@@ -4,15 +4,15 @@ Stores email settings and templates for SendGrid
 """
 
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 
-# Load environment variables from .env file
+# Try to import streamlit for secrets management
 try:
-    from dotenv import load_dotenv
-    load_dotenv()  # This loads .env file from current directory
+    import streamlit as st
+    STREAMLIT_AVAILABLE = True
 except ImportError:
-    pass  # dotenv not installed, will use system environment variables
+    STREAMLIT_AVAILABLE = False
 
 
 @dataclass
@@ -23,8 +23,29 @@ class EmailConfig:
     from_name: str = "Trade Processing System"
 
     @classmethod
+    def from_streamlit_secrets(cls):
+        """Load configuration from Streamlit secrets"""
+        if not STREAMLIT_AVAILABLE:
+            return cls(sendgrid_api_key='', from_email='', from_name='')
+
+        try:
+            # Access secrets from st.secrets
+            api_key = st.secrets.get('SENDGRID_API_KEY', '')
+            from_email = st.secrets.get('SENDGRID_FROM_EMAIL', '')
+            from_name = st.secrets.get('SENDGRID_FROM_NAME', 'Aurigin Trade Processing')
+
+            return cls(
+                sendgrid_api_key=api_key,
+                from_email=from_email,
+                from_name=from_name
+            )
+        except Exception as e:
+            # If secrets not configured, return empty config
+            return cls(sendgrid_api_key='', from_email='', from_name='')
+
+    @classmethod
     def from_env(cls):
-        """Load configuration from environment variables"""
+        """Load configuration from environment variables (fallback)"""
         api_key = os.getenv('SENDGRID_API_KEY', '')
         from_email = os.getenv('SENDGRID_FROM_EMAIL', '')
         from_name = os.getenv('SENDGRID_FROM_NAME', 'Trade Processing System')
