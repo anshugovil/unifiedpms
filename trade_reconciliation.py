@@ -899,79 +899,113 @@ class TradeReconciler:
                         broker_row = broker_df.iloc[match['broker_idx']]
                         clear_row = clearing_df.iloc[match['clearing_idx']]
 
-                        # Calculate commission rate: brokerage / (price * quantity)
+                        # Get trade details
                         price = broker_row.get('price', 0)
                         quantity = broker_row.get('quantity', 0)
                         brokerage = broker_row.get('pure_brokerage', 0)
+                        security_type = broker_row.get('security_type', '')
+                        lots = broker_row.get('lots', 0)
 
                         trade_value = price * quantity
-                        comm_rate = (brokerage / trade_value * 100) if trade_value > 0 else 0
+
+                        # For options (non-futures), calculate per-lot commission rate
+                        # For futures, calculate percentage commission rate
+                        if security_type == 'Futures':
+                            comm_rate = (brokerage / trade_value * 100) if trade_value > 0 else 0
+                            comm_rate_display = f"{comm_rate:.4f}%"
+                        else:
+                            # Options: brokerage per lot
+                            comm_per_lot = (brokerage / lots) if lots > 0 else 0
+                            comm_rate_display = f"₹{comm_per_lot:.2f}/lot"
 
                         comm_report_rows.append({
                             'Broker Name': broker_row.get('broker_name', ''),
                             'Broker Code': broker_row.get('broker_code', ''),
                             'Bloomberg Ticker': broker_row.get('bloomberg_ticker', ''),
+                            'Instrument': security_type,
                             'Side': broker_row.get('side', ''),
+                            'Lots': lots if lots > 0 else '',
                             'Quantity': quantity,
                             'Price': price,
                             'Trade Value': trade_value,
                             'Brokerage': brokerage,
-                            'Comm Rate (%)': comm_rate
+                            'Comm Rate': comm_rate_display
                         })
 
                     comm_report_df = pd.DataFrame(comm_report_rows)
 
                     # Add summary by broker at the bottom
                     if not comm_report_df.empty:
-                        # Group by broker
-                        broker_summary = comm_report_df.groupby(['Broker Name', 'Broker Code']).agg({
-                            'Trade Value': 'sum',
-                            'Brokerage': 'sum',
-                            'Quantity': 'count'  # Number of trades
-                        }).reset_index()
+                        # Separate futures and options for summary
+                        summary_rows = []
 
-                        # Calculate average commission rate for each broker
-                        broker_summary['Avg Comm Rate (%)'] = (
-                            broker_summary['Brokerage'] / broker_summary['Trade Value'] * 100
-                        ).round(4)
+                        # Group by broker and instrument type
+                        for (broker_name, broker_code), group in comm_report_df.groupby(['Broker Name', 'Broker Code']):
+                            # Futures summary
+                            futures_trades = group[group['Instrument'] == 'Futures']
+                            if not futures_trades.empty:
+                                total_value = futures_trades['Trade Value'].sum()
+                                total_brokerage = futures_trades['Brokerage'].sum()
+                                avg_comm_rate = (total_brokerage / total_value * 100) if total_value > 0 else 0
 
-                        # Rename count column
-                        broker_summary = broker_summary.rename(columns={'Quantity': 'Number of Trades'})
+                                summary_rows.append({
+                                    'Broker Name': broker_name,
+                                    'Broker Code': broker_code,
+                                    'Bloomberg Ticker': f"{len(futures_trades)} Futures trades",
+                                    'Instrument': 'Futures',
+                                    'Side': '',
+                                    'Lots': '',
+                                    'Quantity': '',
+                                    'Price': '',
+                                    'Trade Value': total_value,
+                                    'Brokerage': total_brokerage,
+                                    'Comm Rate': f"{avg_comm_rate:.4f}%"
+                                })
 
-                        # Add separator rows and summary
-                        separator_row = pd.DataFrame([{col: '' for col in comm_report_df.columns}])
-                        summary_header = pd.DataFrame([{
-                            'Broker Name': 'BROKER SUMMARY',
-                            **{col: '' for col in comm_report_df.columns if col != 'Broker Name'}
-                        }])
+                            # Options summary
+                            options_trades = group[group['Instrument'] != 'Futures']
+                            if not options_trades.empty:
+                                total_lots = options_trades['Lots'].replace('', 0).astype(float).sum()
+                                total_brokerage = options_trades['Brokerage'].sum()
+                                avg_comm_per_lot = (total_brokerage / total_lots) if total_lots > 0 else 0
 
-                        # Map summary columns to match report columns
-                        broker_summary_mapped = pd.DataFrame([{
-                            'Broker Name': row['Broker Name'],
-                            'Broker Code': row['Broker Code'],
-                            'Bloomberg Ticker': f"{row['Number of Trades']} trades",
-                            'Side': '',
-                            'Quantity': '',
-                            'Price': '',
-                            'Trade Value': row['Trade Value'],
-                            'Brokerage': row['Brokerage'],
-                            'Comm Rate (%)': row['Avg Comm Rate (%)']
-                        } for _, row in broker_summary.iterrows()])
+                                summary_rows.append({
+                                    'Broker Name': broker_name,
+                                    'Broker Code': broker_code,
+                                    'Bloomberg Ticker': f"{len(options_trades)} Options trades",
+                                    'Instrument': 'Options',
+                                    'Side': '',
+                                    'Lots': total_lots,
+                                    'Quantity': '',
+                                    'Price': '',
+                                    'Trade Value': '',
+                                    'Brokerage': total_brokerage,
+                                    'Comm Rate': f"₹{avg_comm_per_lot:.2f}/lot"
+                                })
 
-                        # Combine all
-                        comm_report_df = pd.concat([
-                            comm_report_df,
-                            separator_row,
-                            summary_header,
-                            broker_summary_mapped
-                        ], ignore_index=True)
+                        # Add separator and summary to report
+                        if summary_rows:
+                            separator_row = pd.DataFrame([{col: '' for col in comm_report_df.columns}])
+                            summary_header = pd.DataFrame([{
+                                'Broker Name': 'BROKER SUMMARY',
+                                **{col: '' for col in comm_report_df.columns if col != 'Broker Name'}
+                            }])
+                            broker_summary_df = pd.DataFrame(summary_rows)
+
+                            # Combine all
+                            comm_report_df = pd.concat([
+                                comm_report_df,
+                                separator_row,
+                                summary_header,
+                                broker_summary_df
+                            ], ignore_index=True)
 
                     comm_report_df.to_excel(writer, sheet_name='Commission Report', index=False)
                 else:
                     # Empty commission report
                     empty_comm = pd.DataFrame(columns=['Broker Name', 'Broker Code', 'Bloomberg Ticker',
-                                                       'Side', 'Quantity', 'Price', 'Trade Value',
-                                                       'Brokerage', 'Comm Rate (%)'])
+                                                       'Instrument', 'Side', 'Lots', 'Quantity', 'Price',
+                                                       'Trade Value', 'Brokerage', 'Comm Rate'])
                     empty_comm.to_excel(writer, sheet_name='Commission Report', index=False)
 
                 # Sheet 5: Summary
