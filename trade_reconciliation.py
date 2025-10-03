@@ -476,6 +476,7 @@ class TradeReconciler:
                 continue
 
             # Find potential matches in broker data
+            # Match on: ticker, CP code, broker code, side, quantity AND lots
             broker_matches = broker_df[
                 (broker_df['ticker_normalized'] == clear_row['ticker_normalized']) &
                 (broker_df['cp_code_normalized'] == clear_row['cp_code_normalized']) &
@@ -483,6 +484,14 @@ class TradeReconciler:
                 (broker_df['side'] == clear_row['side_normalized']) &
                 (broker_df['quantity'] == clear_row['quantity'])
             ]
+
+            # Additional check on lots if available in both dataframes
+            if 'lots' in broker_df.columns and 'lots' in clearing_df.columns:
+                clear_lots = abs(clear_row.get('lots', 0))
+                if clear_lots > 0:  # Only apply lots filter if clearing has lots data
+                    broker_matches = broker_matches[
+                        broker_matches['lots'].abs() == clear_lots
+                    ]
 
             # Check price tolerance (0.001%)
             if len(broker_matches) > 0:
@@ -630,6 +639,17 @@ class TradeReconciler:
             reasons.append(f"Quantity mismatch (clearing={clear_row['quantity']}, broker={broker_qtys})")
             return "; ".join(reasons)
 
+        # Check lots if available
+        if 'lots' in broker_df.columns and 'lots' in clear_row.index:
+            clear_lots = abs(clear_row.get('lots', 0))
+            if clear_lots > 0:  # Only check if clearing has lots data
+                lots_matches = qty_matches[qty_matches['lots'].abs() == clear_lots]
+                if len(lots_matches) == 0:
+                    broker_lots = qty_matches['lots'].abs().unique().tolist()
+                    reasons.append(f"Lots mismatch (clearing={clear_lots}, broker={broker_lots})")
+                    return "; ".join(reasons)
+                qty_matches = lots_matches  # Continue with lots-matched trades
+
         # Check price tolerance
         price_tolerance = 0.00001
         price_matches = qty_matches[
@@ -675,6 +695,17 @@ class TradeReconciler:
             clearing_qtys = side_matches['quantity'].unique().tolist()
             reasons.append(f"Quantity mismatch (broker={broker_row['quantity']}, clearing={clearing_qtys})")
             return "; ".join(reasons)
+
+        # Check lots if available in both dataframes
+        if 'lots' in clearing_df.columns and 'lots' in broker_row.index:
+            broker_lots = abs(broker_row.get('lots', 0))
+            if broker_lots > 0:
+                lots_matches = qty_matches[qty_matches['lots'].abs() == broker_lots]
+                if len(lots_matches) == 0:
+                    clearing_lots = qty_matches['lots'].abs().unique().tolist()
+                    reasons.append(f"Lots mismatch (broker={broker_lots}, clearing={clearing_lots})")
+                    return "; ".join(reasons)
+                qty_matches = lots_matches  # Continue with lots-matched trades
 
         # Check price tolerance
         price_tolerance = 0.00001
