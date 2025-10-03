@@ -2980,7 +2980,7 @@ def display_email_reports_tab():
                 'size': recon_file.stat().st_size / (1024 * 1024)  # MB
             }
 
-    # Enhanced clearing file
+    # Enhanced clearing file (from broker recon)
     if st.session_state.get('enhanced_clearing_file'):
         enhanced_file = Path(st.session_state.enhanced_clearing_file)
         if enhanced_file.exists():
@@ -2990,6 +2990,65 @@ def display_email_reports_tab():
                 'description': 'Clearing file with brokerage and taxes',
                 'size': enhanced_file.stat().st_size / (1024 * 1024)  # MB
             }
+
+    # Final enhanced clearing file (after all processing)
+    if st.session_state.get('final_enhanced_clearing_file'):
+        final_enhanced_file = Path(st.session_state.final_enhanced_clearing_file)
+        if final_enhanced_file.exists():
+            available_reports['final_enhanced_clearing'] = {
+                'name': 'Final Enhanced Clearing File',
+                'file': final_enhanced_file,
+                'description': 'Final clearing file after all processing',
+                'size': final_enhanced_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # Stage 1 output files (parsed trades, processed trades, final positions)
+    if st.session_state.get('stage1_outputs'):
+        output_files = st.session_state.stage1_outputs
+
+        # Processed trades file
+        if 'processed_trades' in output_files:
+            processed_file = Path(output_files['processed_trades'])
+            if processed_file.exists():
+                available_reports['processed_trades'] = {
+                    'name': 'Processed Trades File',
+                    'file': processed_file,
+                    'description': 'Trades with strategies and splits',
+                    'size': processed_file.stat().st_size / (1024 * 1024)  # MB
+                }
+
+        # Parsed trades file
+        if 'parsed_trades' in output_files:
+            parsed_file = Path(output_files['parsed_trades'])
+            if parsed_file.exists():
+                available_reports['parsed_trades'] = {
+                    'name': 'Parsed Trades File',
+                    'file': parsed_file,
+                    'description': 'Original parsed trades',
+                    'size': parsed_file.stat().st_size / (1024 * 1024)  # MB
+                }
+
+        # Final positions file
+        if 'final_positions' in output_files:
+            positions_file = Path(output_files['final_positions'])
+            if positions_file.exists():
+                available_reports['final_positions'] = {
+                    'name': 'Final Positions File',
+                    'file': positions_file,
+                    'description': 'Final positions after processing',
+                    'size': positions_file.stat().st_size / (1024 * 1024)  # MB
+                }
+
+        # Summary report
+        if 'summary' in output_files:
+            summary_file = Path(output_files['summary'])
+            if summary_file.exists():
+                available_reports['summary_report'] = {
+                    'name': 'Summary Report',
+                    'file': summary_file,
+                    'description': 'Processing summary with statistics',
+                    'size': summary_file.stat().st_size / (1024 * 1024)  # MB
+                }
 
     # PMS Reconciliation report
     if st.session_state.get('recon_file'):
@@ -3039,8 +3098,9 @@ def display_email_reports_tab():
             # Initialize session state for checkbox
             checkbox_key = f'email_select_{report_id}'
             if checkbox_key not in st.session_state:
-                # Default to checked for deliverables, broker_recon, and pms_recon
-                st.session_state[checkbox_key] = report_id in ['deliverables', 'broker_recon', 'pms_recon']
+                # Default to checked for key reports
+                default_reports = ['deliverables', 'broker_recon', 'pms_recon', 'processed_trades', 'final_enhanced_clearing']
+                st.session_state[checkbox_key] = report_id in default_reports
 
             selected = st.checkbox(
                 report_info['name'],
