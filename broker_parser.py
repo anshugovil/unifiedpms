@@ -88,6 +88,15 @@ class BrokerParserBase:
         self.ticker_to_underlying = {}
         self._load_mappings()
 
+    def _add_lots_if_available(self, parsed_row: dict, row, df: pd.DataFrame):
+        """Add lots to parsed row if available in source data"""
+        # Check for various lot column names
+        lot_columns = ['Lots traded', 'Lots Traded', 'Lots', 'lots']
+        for col in lot_columns:
+            if col in df.columns:
+                parsed_row['lots'] = float(row[col]) if pd.notna(row[col]) else 0
+                return
+
     def _load_mappings(self):
         """Load futures mapping file"""
         try:
@@ -293,6 +302,9 @@ class IciciParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -515,6 +527,9 @@ class KotakParser(BrokerParserBase):
                         'ticker': ticker
                     }
 
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
+
                     parsed_rows.append(parsed_row)
 
                 except Exception as e:
@@ -621,6 +636,9 @@ class KotakParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -767,6 +785,9 @@ class IIFLParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -919,6 +940,9 @@ class AxisParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -1074,6 +1098,9 @@ class EquirusParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -1236,6 +1263,9 @@ class EdelweissParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 
@@ -1495,6 +1525,9 @@ class MorganStanleyParser(BrokerParserBase):
                         'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
 
                     parsed_rows.append(parsed_row)
 

@@ -444,6 +444,10 @@ class TradeReconciler:
             df['price'] = df['Avg Price'].astype(float)
             df['ticker_normalized'] = df['Bloomberg Ticker'].astype(str).str.upper().str.strip()
 
+            # Add lots column for matching if it exists in the clearing file
+            if 'Lots Traded' in df.columns:
+                df['lots'] = df['Lots Traded'].astype(float)
+
             # Clean up temp file
             temp_path.unlink()
 
