@@ -1001,8 +1001,8 @@ class EquirusParser(BrokerParserBase):
         # If string, try to parse it
         try:
             expiry_str = str(expiry_value).strip()
-            # Try common formats
-            for fmt in ['%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y', '%d/%m/%Y', '%d/%m/%y']:
+            # Try common formats including MM/DD/YYYY (American format)
+            for fmt in ['%m/%d/%Y', '%m/%d/%y', '%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y', '%d/%m/%Y', '%d/%m/%y']:
                 try:
                     return datetime.strptime(expiry_str, fmt)
                 except:
@@ -1593,8 +1593,8 @@ class AntiqueParser(BrokerParserBase):
         # If string, try to parse it
         try:
             expiry_str = str(expiry_value).strip()
-            # Try common formats
-            for fmt in ['%d/%m/%Y', '%d/%m/%y', '%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y']:
+            # Try common formats including MM/DD/YYYY (American format)
+            for fmt in ['%m/%d/%Y', '%m/%d/%y', '%d/%m/%Y', '%d/%m/%y', '%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y']:
                 try:
                     return datetime.strptime(expiry_str, fmt)
                 except:
