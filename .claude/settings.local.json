@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(for f in *.xxx)",
+      "Bash(do mv \"$f\" \"xxx_$f%.xxx\")",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
