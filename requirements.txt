@@ -19,6 +19,10 @@ yfinance>=0.2.33,<1.0.0  # Yahoo Finance API
 # System utilities (for launcher)
 psutil>=5.9.0,<6.0.0    # Process management
 
+# Email notifications (optional)
+sendgrid>=6.10.0,<7.0.0   # SendGrid email service
+python-dotenv>=1.0.0      # Environment variable management
+
 # Optional but recommended
 requests>=2.31.0,<3.0.0  # HTTP requests
 urllib3>=2.0.0,<3.0.0    # URL handling

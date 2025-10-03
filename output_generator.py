@@ -14,6 +14,15 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 logger = logging.getLogger(__name__)
 
+# Import email functionality (optional)
+try:
+    from email_sender import EmailSender
+    from email_config import EmailConfig
+    EMAIL_AVAILABLE = True
+except ImportError:
+    EMAIL_AVAILABLE = False
+    logger.info("Email functionality not available - install sendgrid package to enable")
+
 
 class OutputGenerator:
     """Generates and saves all output files with proper date formatting"""
@@ -25,14 +34,16 @@ class OutputGenerator:
         self.missing_mappings = {'positions': [], 'trades': []}
         self.account_prefix = account_prefix  # e.g. "AURIGIN_" or ""
         
-    def save_all_outputs(self, 
+    def save_all_outputs(self,
                         parsed_trades_df: pd.DataFrame,
                         starting_positions_df: pd.DataFrame,
                         processed_trades_df: pd.DataFrame,
                         final_positions_df: pd.DataFrame,
                         file_prefix: str = "output",
                         input_parser=None,
-                        trade_parser=None) -> Dict[str, Path]:
+                        trade_parser=None,
+                        send_email: bool = False,
+                        email_recipients: List[str] = None) -> Dict[str, Path]:
         """
         Save all output files with proper date formatting
         Returns dictionary of file type to file path
@@ -85,7 +96,19 @@ class OutputGenerator:
             trade_parser
         )
         output_files['summary'] = summary_file
-        
+
+        # Send email if requested
+        if send_email and email_recipients:
+            self._send_completion_email(
+                output_files=output_files,
+                email_recipients=email_recipients,
+                stats={
+                    'total_trades': len(parsed_trades_df),
+                    'starting_positions': len(starting_positions_df),
+                    'final_positions': len(final_positions_df)
+                }
+            )
+
         return output_files
 
     def save_positions_by_underlying_excel(self, final_positions_df: pd.DataFrame,
@@ -542,3 +565,33 @@ class OutputGenerator:
             trades_data.append(trade_dict)
         
         return pd.DataFrame(trades_data)
+
+    def _send_completion_email(self, output_files: Dict[str, Path], email_recipients: List[str], stats: Dict):
+        """Send email notification when processing is complete"""
+        if not EMAIL_AVAILABLE:
+            logger.warning("Email not sent - sendgrid package not installed")
+            return
+
+        try:
+            email_sender = EmailSender()
+
+            if not email_sender.is_enabled():
+                logger.warning("Email not sent - not configured")
+                return
+
+            # Send Stage 1 completion email
+            success = email_sender.send_stage1_complete(
+                to_emails=email_recipients,
+                account_prefix=self.account_prefix,
+                timestamp=self.timestamp,
+                output_files=output_files,
+                stats=stats
+            )
+
+            if success:
+                logger.info(f"Completion email sent to {', '.join(email_recipients)}")
+            else:
+                logger.error("Failed to send completion email")
+
+        except Exception as e:
+            logger.error(f"Error sending completion email: {e}")

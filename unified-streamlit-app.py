@@ -758,7 +758,72 @@ def main():
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-    
+
+        # Email Settings
+        st.divider()
+        st.header("📧 Email Notifications")
+
+        # Check if email is configured
+        try:
+            from email_config import EmailConfig
+            email_config = EmailConfig.from_env()
+            email_configured = email_config.is_configured()
+        except:
+            email_configured = False
+
+        if email_configured:
+            st.success("✓ Email configured")
+
+            # Email toggle
+            send_email = st.checkbox(
+                "Send email on completion",
+                value=st.session_state.get('send_email', False),
+                key='send_email_toggle',
+                help="Send reports via email when processing completes"
+            )
+            st.session_state.send_email = send_email
+
+            if send_email:
+                # Show default recipient
+                from email_config import get_default_recipients
+                default_ops = get_default_recipients()
+                st.info(f"✅ Default: {', '.join(default_ops)}")
+
+                # Additional recipients
+                additional_recipients = st.session_state.get('additional_recipients', '')
+                recipients_input = st.text_area(
+                    "Additional Recipients (optional)",
+                    value=additional_recipients,
+                    placeholder="user1@example.com, user2@example.com",
+                    help="Add more recipients (operations@aurigincm.com is always included)"
+                )
+
+                # Combine default + additional
+                all_recipients = default_ops.copy()
+                if recipients_input:
+                    additional = [email.strip() for email in recipients_input.split(',') if email.strip()]
+                    for email in additional:
+                        if email not in all_recipients:
+                            all_recipients.append(email)
+                    st.session_state.additional_recipients = recipients_input
+
+                st.session_state.email_recipients = all_recipients
+                st.caption(f"📧 Total: {len(all_recipients)} recipient(s)")
+        else:
+            st.warning("Email not configured")
+            with st.expander("ℹ️ Setup Instructions"):
+                st.markdown("""
+                To enable email notifications, set these environment variables:
+
+                ```bash
+                SENDGRID_API_KEY=your_api_key_here
+                SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+                SENDGRID_FROM_NAME=Trade Processing System
+                ```
+
+                Or create a `.env` file in the project root.
+                """)
+
     # Main content tabs
     tab_list = ["📊 Pipeline Overview", "🔄 Stage 1: Strategy", "📋 Stage 2: ACM"]
 
@@ -974,7 +1039,9 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
                 final_positions_df,
                 file_prefix="stage1",
                 input_parser=input_parser,
-                trade_parser=trade_parser
+                trade_parser=trade_parser,
+                send_email=st.session_state.get('send_email', False),
+                email_recipients=st.session_state.get('email_recipients', [])
             )
             
             # Store in session state
