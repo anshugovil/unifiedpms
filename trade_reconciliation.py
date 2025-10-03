@@ -919,8 +919,8 @@ class TradeReconciler:
                             comm_per_lot = (brokerage / lots) if lots > 0 else 0
                             comm_rate_display = f"₹{comm_per_lot:.2f}/lot"
 
-                        # Tax rate: taxes per quantity (irrespective of instrument type)
-                        tax_per_qty = (taxes / quantity) if quantity > 0 else 0
+                        # Tax rate: taxes / trade value (irrespective of instrument type)
+                        tax_rate = (taxes / trade_value * 100) if trade_value > 0 else 0
 
                         comm_report_rows.append({
                             'Broker Name': broker_row.get('broker_name', ''),
@@ -935,7 +935,7 @@ class TradeReconciler:
                             'Brokerage': brokerage,
                             'Comm Rate': comm_rate_display,
                             'Taxes': taxes,
-                            'Tax Rate': tax_per_qty
+                            'Tax Rate (%)': tax_rate
                         })
 
                     comm_report_df = pd.DataFrame(comm_report_rows)
@@ -955,7 +955,7 @@ class TradeReconciler:
                                 total_taxes = futures_trades['Taxes'].sum()
                                 total_quantity = futures_trades['Quantity'].sum()
                                 avg_comm_rate = (total_brokerage / total_value * 100) if total_value > 0 else 0
-                                avg_tax_rate = (total_taxes / total_quantity) if total_quantity > 0 else 0
+                                avg_tax_rate = (total_taxes / total_value * 100) if total_value > 0 else 0
 
                                 summary_rows.append({
                                     'Broker Name': broker_name,
@@ -970,18 +970,19 @@ class TradeReconciler:
                                     'Brokerage': total_brokerage,
                                     'Comm Rate': f"{avg_comm_rate:.4f}%",
                                     'Taxes': total_taxes,
-                                    'Tax Rate': avg_tax_rate
+                                    'Tax Rate (%)': avg_tax_rate
                                 })
 
                             # Options summary
                             options_trades = group[group['Instrument'] != 'Futures']
                             if not options_trades.empty:
                                 total_lots = options_trades['Lots'].replace('', 0).astype(float).sum()
+                                total_value = options_trades['Trade Value'].sum()
                                 total_brokerage = options_trades['Brokerage'].sum()
                                 total_taxes = options_trades['Taxes'].sum()
                                 total_quantity = options_trades['Quantity'].sum()
                                 avg_comm_per_lot = (total_brokerage / total_lots) if total_lots > 0 else 0
-                                avg_tax_rate = (total_taxes / total_quantity) if total_quantity > 0 else 0
+                                avg_tax_rate = (total_taxes / total_value * 100) if total_value > 0 else 0
 
                                 summary_rows.append({
                                     'Broker Name': broker_name,
@@ -992,11 +993,11 @@ class TradeReconciler:
                                     'Lots': total_lots,
                                     'Quantity': total_quantity,
                                     'Price': '',
-                                    'Trade Value': '',
+                                    'Trade Value': total_value,
                                     'Brokerage': total_brokerage,
                                     'Comm Rate': f"₹{avg_comm_per_lot:.2f}/lot",
                                     'Taxes': total_taxes,
-                                    'Tax Rate': avg_tax_rate
+                                    'Tax Rate (%)': avg_tax_rate
                                 })
 
                         # Add separator and summary to report
@@ -1021,7 +1022,7 @@ class TradeReconciler:
                     # Empty commission report
                     empty_comm = pd.DataFrame(columns=['Broker Name', 'Broker Code', 'Bloomberg Ticker',
                                                        'Instrument', 'Side', 'Lots', 'Quantity', 'Price',
-                                                       'Trade Value', 'Brokerage', 'Comm Rate', 'Taxes', 'Tax Rate'])
+                                                       'Trade Value', 'Brokerage', 'Comm Rate', 'Taxes', 'Tax Rate (%)'])
                     empty_comm.to_excel(writer, sheet_name='Commission Report', index=False)
 
                 # Sheet 5: Summary
