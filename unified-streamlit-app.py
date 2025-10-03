@@ -410,7 +410,7 @@ def main():
 
             broker_files = st.file_uploader(
                 "3. Executing Broker Files",
-                type=['xlsx', 'xls'],
+                type=['xlsx', 'xls', 'csv'],
                 accept_multiple_files=True,
                 key='broker_files',
                 help="One or more broker files (ICICI, Kotak, Morgan Stanley, etc.)"

@@ -283,13 +283,68 @@ class TradeReconciler:
                     broker_codes = df[col].dropna().astype(str).str.strip()
                     if len(broker_codes) > 0:
                         broker_code_str = broker_codes.iloc[0]
-                        # Strip leading zeros and convert to int
-                        broker_code = int(broker_code_str.lstrip('0')) if broker_code_str.lstrip('0') else 0
+                        try:
+                            # Strip leading zeros and convert to int
+                            broker_code = int(float(broker_code_str.lstrip('0'))) if broker_code_str.lstrip('0') else 0
+                        except:
+                            logger.warning(f"Could not parse broker code: {broker_code_str}")
+                            continue
 
                         # Look up broker by code
                         broker_info = get_broker_by_code(broker_code)
                         if broker_info:
                             logger.info(f"Detected broker from {col}: {broker_info['name']} (code: {broker_code})")
+                            return broker_info
+                        else:
+                            logger.warning(f"Unknown broker code: {broker_code} from column {col}")
+
+            # Method 1b: Check Broker Name column if broker code didn't match
+            if 'Broker Name' in df.columns:
+                broker_names = df['Broker Name'].dropna().astype(str).str.upper().str.strip()
+                if len(broker_names) > 0:
+                    broker_name = broker_names.iloc[0]
+                    logger.info(f"Checking broker name: {broker_name}")
+
+                    # Match by broker name
+                    if 'EQUIRUS' in broker_name:
+                        broker_info = get_broker_by_code(13017)
+                        if broker_info:
+                            logger.info(f"Detected Equirus from Broker Name column")
+                            return broker_info
+                    elif 'ANTIQUE' in broker_name:
+                        broker_info = get_broker_by_code(12987)
+                        if broker_info:
+                            logger.info(f"Detected Antique from Broker Name column")
+                            return broker_info
+                    elif 'KOTAK' in broker_name:
+                        broker_info = get_broker_by_code(8081)
+                        if broker_info:
+                            logger.info(f"Detected Kotak from Broker Name column")
+                            return broker_info
+                    elif 'ICICI' in broker_name:
+                        broker_info = get_broker_by_code(7730)
+                        if broker_info:
+                            logger.info(f"Detected ICICI from Broker Name column")
+                            return broker_info
+                    elif 'IIFL' in broker_name:
+                        broker_info = get_broker_by_code(10975)
+                        if broker_info:
+                            logger.info(f"Detected IIFL from Broker Name column")
+                            return broker_info
+                    elif 'AXIS' in broker_name:
+                        broker_info = get_broker_by_code(13872)
+                        if broker_info:
+                            logger.info(f"Detected Axis from Broker Name column")
+                            return broker_info
+                    elif 'EDELWEISS' in broker_name or 'NUVAMA' in broker_name:
+                        broker_info = get_broker_by_code(11933)
+                        if broker_info:
+                            logger.info(f"Detected Edelweiss/Nuvama from Broker Name column")
+                            return broker_info
+                    elif 'MORGAN' in broker_name or 'MS' in broker_name:
+                        broker_info = get_broker_by_code(10542)
+                        if broker_info:
+                            logger.info(f"Detected Morgan Stanley from Broker Name column")
                             return broker_info
 
             # Method 2: Detect by column structure (for files without broker code or Kotak format)
