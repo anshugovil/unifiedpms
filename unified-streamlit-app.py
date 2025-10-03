@@ -78,7 +78,15 @@ try:
         POSITION_GROUPER_AVAILABLE = True
     except ImportError:
         POSITION_GROUPER_AVAILABLE = False
-        logger.warning("Position Grouper not available")
+
+    # Import Email functionality
+    try:
+        from email_config import EmailConfig, get_default_recipients
+        from email_sender import EmailSender
+        EMAIL_AVAILABLE = True
+    except ImportError:
+        EMAIL_AVAILABLE = False
+        logging.warning("Email functionality not available - install sendgrid to enable")
 
 except ModuleNotFoundError as e:
     st.error(f"Failed to import modules: {e}")
@@ -763,15 +771,28 @@ def main():
         st.divider()
         st.header("📧 Email Notifications")
 
-        # Check if email is configured
-        try:
-            from email_config import EmailConfig
-            email_config = EmailConfig.from_env()
-            email_configured = email_config.is_configured()
-        except:
-            email_configured = False
+        # Check if email module is available
+        if not EMAIL_AVAILABLE:
+            st.warning("Email not available")
+            with st.expander("ℹ️ Setup Instructions"):
+                st.markdown("""
+                To enable email notifications:
 
-        if email_configured:
+                ```bash
+                pip install sendgrid python-dotenv
+                ```
+
+                Then restart the Streamlit app.
+                """)
+        else:
+            # Check if email is configured
+            try:
+                email_config = EmailConfig.from_env()
+                email_configured = email_config.is_configured()
+            except:
+                email_configured = False
+
+        if EMAIL_AVAILABLE and email_configured:
             st.success("✓ Email configured")
 
             # Email toggle
@@ -809,7 +830,7 @@ def main():
 
                 st.session_state.email_recipients = all_recipients
                 st.caption(f"📧 Total: {len(all_recipients)} recipient(s)")
-        else:
+        elif EMAIL_AVAILABLE and not email_configured:
             st.warning("Email not configured")
             with st.expander("ℹ️ Setup Instructions"):
                 st.markdown("""
@@ -817,11 +838,11 @@ def main():
 
                 ```bash
                 SENDGRID_API_KEY=your_api_key_here
-                SENDGRID_FROM_EMAIL=noreply@yourdomain.com
-                SENDGRID_FROM_NAME=Trade Processing System
+                SENDGRID_FROM_EMAIL=agovil@aurigincm.com
+                SENDGRID_FROM_NAME=Aurigin Trade Processing
                 ```
 
-                Or create a `.env` file in the project root.
+                Or create a `.env` file in the project root with these values.
                 """)
 
     # Main content tabs
