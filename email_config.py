@@ -7,6 +7,13 @@ import os
 from typing import Dict, List
 from dataclasses import dataclass
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # This loads .env file from current directory
+except ImportError:
+    pass  # dotenv not installed, will use system environment variables
+
 
 @dataclass
 class EmailConfig:
