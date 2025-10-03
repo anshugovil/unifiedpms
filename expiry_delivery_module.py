@@ -94,7 +94,7 @@ class ExpiryDeliveryGenerator:
             positions_df['Expiry_dt'] = pd.to_datetime(positions_df['Expiry'])
         
         # Keep original Expiry column as date string for display
-        positions_df['Expiry'] = positions_df['Expiry_dt'].dt.strftime('%Y-%m-%d')
+        positions_df['Expiry'] = positions_df['Expiry_dt'].dt.strftime('%d/%m/%Y')
         
         # Group by expiry date
         expiry_groups = positions_df.groupby(positions_df['Expiry_dt'].dt.date)
@@ -147,7 +147,7 @@ class ExpiryDeliveryGenerator:
         errors_list = []
         
         # Format expiry date as string for output
-        expiry_date_str = expiry_date.strftime('%Y-%m-%d') if hasattr(expiry_date, 'strftime') else str(expiry_date)
+        expiry_date_str = expiry_date.strftime('%d/%m/%Y') if hasattr(expiry_date, 'strftime') else str(expiry_date)
         
         for idx, row in group_df.iterrows():
             try:

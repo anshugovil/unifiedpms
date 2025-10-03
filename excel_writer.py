@@ -140,11 +140,11 @@ class ExcelWriter:
             
             detail_rows = []
             current_row += 1
-            
+
             # Write detail rows
             for pos in underlying_positions:
                 ws.cell(row=current_row, column=2, value=pos.bloomberg_ticker)
-                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos.position_lots)
                 ws.cell(row=current_row, column=5, value=pos.security_type)
                 
@@ -202,7 +202,7 @@ class ExcelWriter:
     
     def write_expiry_sheet(self, expiry_date: datetime, positions: List[Position], prices: Dict[str, float]):
         """Write sheet for specific expiry"""
-        sheet_name = f"Expiry_{expiry_date.strftime('%Y_%m_%d')}"
+        sheet_name = f"Expiry_{expiry_date.strftime('%d_%m_%Y')}"
         ws = self.wb.create_sheet(sheet_name)
         
         expiry_positions = [p for p in positions if p.expiry_date.date() == expiry_date.date()]
@@ -270,14 +270,14 @@ class ExcelWriter:
             
             detail_rows = []
             current_row += 1
-            
+
             # Sort positions within each underlying
             underlying_positions.sort(key=lambda x: (x.expiry_date, x.strike_price))
-            
+
             # Write detail rows
             for pos in underlying_positions:
                 ws.cell(row=current_row, column=2, value=pos.bloomberg_ticker)
-                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos.position_lots)
                 ws.cell(row=current_row, column=5, value=pos.security_type)
                 
@@ -390,29 +390,29 @@ class ExcelWriter:
             
             detail_rows = []
             current_row += 1
-            
+
             underlying_positions.sort(key=lambda x: (x.expiry_date, x.strike_price))
-            
+
             # Write detail rows
             for pos in underlying_positions:
                 ws.cell(row=current_row, column=2, value=pos.bloomberg_ticker)
-                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos.position_lots)
                 ws.cell(row=current_row, column=5, value=pos.security_type)
-                
+
                 strike_cell = ws.cell(row=current_row, column=6,
                     value=pos.strike_price if pos.strike_price > 0 else "")
                 if pos.strike_price > 0:
                     strike_cell.number_format = self.price_format
-                    
+
                 ws.cell(row=current_row, column=7, value=pos.lot_size)
-                
+
                 # IV formulas
                 for col_idx, price_col in [(8, "L"), (10, "M"), (15, "N")]:
                     formula = self._create_iv_formula(current_row, group_start_row, price_col)
                     cell = ws.cell(row=current_row, column=col_idx, value=formula)
                     cell.number_format = self.iv_format
-                
+
                 # USD conversions
                 for inr_col, usd_col in [(8, 9), (10, 11), (15, 16)]:
                     inr_cell = chr(64 + inr_col)
@@ -442,7 +442,7 @@ class ExcelWriter:
     
     def write_iv_expiry_sheet(self, expiry_date: datetime, positions: List[Position], prices: Dict[str, float]):
         """Write IV sheet for specific expiry"""
-        sheet_name = f"IV_Expiry_{expiry_date.strftime('%Y_%m_%d')}"
+        sheet_name = f"IV_Expiry_{expiry_date.strftime('%d_%m_%Y')}"
         ws = self.wb.create_sheet(sheet_name)
         
         expiry_positions = [p for p in positions if p.expiry_date.date() == expiry_date.date()]
@@ -507,21 +507,21 @@ class ExcelWriter:
             
             # Sort positions within each underlying
             underlying_positions.sort(key=lambda x: (x.expiry_date, x.strike_price))
-            
+
             # Write detail rows
             for pos in underlying_positions:
                 ws.cell(row=current_row, column=2, value=pos.bloomberg_ticker)
-                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos.position_lots)
                 ws.cell(row=current_row, column=5, value=pos.security_type)
-                
+
                 strike_cell = ws.cell(row=current_row, column=6,
                     value=pos.strike_price if pos.strike_price > 0 else "")
                 if pos.strike_price > 0:
                     strike_cell.number_format = self.price_format
-                    
+
                 ws.cell(row=current_row, column=7, value=pos.lot_size)
-                
+
                 # IV formulas
                 for col_idx, price_col in [(8, "L"), (10, "M"), (15, "N")]:
                     formula = self._create_iv_formula(current_row, group_start_row, price_col)
@@ -568,14 +568,14 @@ class ExcelWriter:
             cell.alignment = self.header_alignment
             cell.border = self.border
         
-        sorted_positions = sorted(positions, 
+        sorted_positions = sorted(positions,
                                 key=lambda x: (x.underlying_ticker, x.expiry_date, x.strike_price))
-        
+
         current_row = 2
         for pos in sorted_positions:
             ws.cell(row=current_row, column=1, value=pos.underlying_ticker)
             ws.cell(row=current_row, column=2, value=pos.bloomberg_ticker)
-            ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%Y-%m-%d'))
+            ws.cell(row=current_row, column=3, value=pos.expiry_date.strftime('%d/%m/%Y'))
             ws.cell(row=current_row, column=4, value=pos.position_lots)
             ws.cell(row=current_row, column=5, value=pos.security_type)
             
@@ -610,7 +610,7 @@ class ExcelWriter:
         
         for row, item in enumerate(unmapped_symbols, 2):
             ws.cell(row=row, column=1, value=item['symbol'])
-            ws.cell(row=row, column=2, value=item['expiry'].strftime('%Y-%m-%d'))
+            ws.cell(row=row, column=2, value=item['expiry'].strftime('%d/%m/%Y'))
             ws.cell(row=row, column=3, value=item['position_lots'])
     
     def save(self):

@@ -285,12 +285,12 @@ class IciciParser(BrokerParserBase):
                         'price': float(row['Mkt. Rate']),
                         'pure_brokerage': float(row['Pure Brokerage AMT']),
                         'total_taxes': round(float(row['Total Taxes']), 2),
-                        'trade_date': row['Trade Date'].strftime('%Y-%m-%d') if isinstance(row['Trade Date'], (datetime, pd.Timestamp)) else str(row['Trade Date']).strip(),
+                        'trade_date': row['Trade Date'].strftime('%d/%m/%Y') if isinstance(row['Trade Date'], (datetime, pd.Timestamp)) else str(row['Trade Date']).strip(),
                         'scrip_code': scrip_code,
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -492,7 +492,7 @@ class KotakParser(BrokerParserBase):
                         trade_date_val = row['Trade Date']
                         if pd.notna(trade_date_val):
                             if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                                trade_date = trade_date_val.strftime('%Y-%m-%d')
+                                trade_date = trade_date_val.strftime('%d/%m/%Y')
                             else:
                                 trade_date = str(trade_date_val).strip()
 
@@ -511,7 +511,7 @@ class KotakParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -598,7 +598,7 @@ class KotakParser(BrokerParserBase):
                         trade_date_val = row['Trade Date']
                         if pd.notna(trade_date_val):
                             if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                                trade_date = trade_date_val.strftime('%Y-%m-%d')
+                                trade_date = trade_date_val.strftime('%d/%m/%Y')
                             else:
                                 trade_date = str(trade_date_val).strip()
 
@@ -618,7 +618,7 @@ class KotakParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -743,7 +743,7 @@ class IIFLParser(BrokerParserBase):
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
                         if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                            trade_date = trade_date_val.strftime('%Y-%m-%d')
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
                         else:
                             trade_date = str(trade_date_val).strip()
                     else:
@@ -764,7 +764,7 @@ class IIFLParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -890,7 +890,7 @@ class AxisParser(BrokerParserBase):
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
                         if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                            trade_date = trade_date_val.strftime('%Y-%m-%d')
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
                         else:
                             trade_date = str(trade_date_val).strip()
                     else:
@@ -916,7 +916,7 @@ class AxisParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -1050,7 +1050,7 @@ class EquirusParser(BrokerParserBase):
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
                         if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                            trade_date = trade_date_val.strftime('%Y-%m-%d')
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
                         else:
                             trade_date = str(trade_date_val).strip()
                     else:
@@ -1071,7 +1071,7 @@ class EquirusParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -1204,7 +1204,7 @@ class EdelweissParser(BrokerParserBase):
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
                         if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                            trade_date = trade_date_val.strftime('%Y-%m-%d')
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
                         else:
                             trade_date = str(trade_date_val).strip()
                     else:
@@ -1233,7 +1233,7 @@ class EdelweissParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 
@@ -1456,7 +1456,7 @@ class MorganStanleyParser(BrokerParserBase):
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
                         if isinstance(trade_date_val, (datetime, pd.Timestamp)):
-                            trade_date = trade_date_val.strftime('%Y-%m-%d')
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
                         else:
                             # Parse date format "26-Sept-25"
                             try:
@@ -1492,7 +1492,7 @@ class MorganStanleyParser(BrokerParserBase):
                         'instrument': instrument,
                         'security_type': security_type,
                         'strike': strike,
-                        'expiry_date': expiry.strftime('%Y-%m-%d'),
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
                         'ticker': ticker
                     }
 

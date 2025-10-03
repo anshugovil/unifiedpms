@@ -398,7 +398,7 @@ class DeliverableCalculator:
             # Write detail rows
             for pos in sorted(underlying_positions, key=lambda x: (x['expiry'], x['strike'])):
                 ws.cell(row=current_row, column=2, value=pos['ticker'])
-                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos['lots'])
                 ws.cell(row=current_row, column=5, value=pos['security_type'])
                 
@@ -458,7 +458,7 @@ class DeliverableCalculator:
     def _write_expiry_sheet(self, expiry_date: datetime, positions: List[Dict],
                            prices: Dict[str, float], prefix: str, position_type: str = ""):
         """Write sheet for specific expiry with Bloomberg formulas"""
-        sheet_name = f"{prefix}_Expiry_{expiry_date.strftime('%Y_%m_%d')}"
+        sheet_name = f"{prefix}_Expiry_{expiry_date.strftime('%d_%m_%Y')}"
         ws = self.wb.create_sheet(sheet_name)
         
         # Filter positions for this expiry
@@ -551,7 +551,7 @@ class DeliverableCalculator:
             # Write detail rows
             for pos in sorted(underlying_positions, key=lambda x: (x['expiry'], x['strike'])):
                 ws.cell(row=current_row, column=2, value=pos['ticker'])
-                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos['lots'])
                 ws.cell(row=current_row, column=5, value=pos['security_type'])
                 
@@ -680,7 +680,7 @@ class DeliverableCalculator:
             # Write detail rows with IV formulas
             for pos in sorted(underlying_positions, key=lambda x: (x['expiry'], x['strike'])):
                 ws.cell(row=current_row, column=2, value=pos['ticker'])
-                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%Y-%m-%d'))
+                ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%d/%m/%Y'))
                 ws.cell(row=current_row, column=4, value=pos['lots'])
                 ws.cell(row=current_row, column=5, value=pos['security_type'])
                 
@@ -811,7 +811,7 @@ class DeliverableCalculator:
         for pos in sorted_positions:
             ws.cell(row=current_row, column=1, value=pos['underlying'])
             ws.cell(row=current_row, column=2, value=pos['ticker'])
-            ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%Y-%m-%d'))
+            ws.cell(row=current_row, column=3, value=pos['expiry'].strftime('%d/%m/%Y'))
             ws.cell(row=current_row, column=4, value=pos['lots'])
             ws.cell(row=current_row, column=5, value=pos['security_type'])
             

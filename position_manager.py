@@ -178,8 +178,8 @@ class PositionDetails:
         self.direction = "Long" if self.lots > 0 else "Short" if self.lots < 0 else "Flat"
     
     def get_expiry_date_str(self) -> str:
-        """Get expiry as date string (YYYY-MM-DD)"""
-        return self.expiry.strftime('%Y-%m-%d')
+        """Get expiry as date string (DD/MM/YYYY)"""
+        return self.expiry.strftime('%d/%m/%Y')
     
     def __repr__(self):
         return f"Position({self.ticker}, {self.lots} lots @ {self.lot_size}, {self.strategy})"
@@ -243,7 +243,7 @@ class PositionManager:
             }
             
             # Format expiry as simple date string
-            expiry_date_str = pos.expiry_date.strftime('%Y-%m-%d')
+            expiry_date_str = pos.expiry_date.strftime('%d/%m/%Y')
             
             # Add to DataFrame data with formatted date
             positions_data.append({
@@ -361,7 +361,7 @@ class PositionManager:
         
         for ticker, position in self.positions.items():
             # Format expiry as simple date string
-            expiry_date_str = position.expiry.strftime('%Y-%m-%d')
+            expiry_date_str = position.expiry.strftime('%d/%m/%Y')
             
             positions_data.append({
                 'Ticker': ticker,

@@ -378,7 +378,7 @@ class TradeReconciler:
             for trade in trades:
                 key = (
                     trade.symbol,
-                    trade.expiry_date.strftime('%Y-%m-%d'),
+                    trade.expiry_date.strftime('%d/%m/%Y'),
                     trade.security_type,
                     trade.strike_price,
                     abs(trade.position_lots)  # Use absolute value for matching
@@ -404,7 +404,7 @@ class TradeReconciler:
                     # Parse row to match trade attributes
                     symbol = str(row.get('Symbol', '')).strip().upper()
                     expiry_str = str(row.get('Expiry Dt', ''))
-                    expiry = pd.to_datetime(expiry_str).strftime('%Y-%m-%d')
+                    expiry = pd.to_datetime(expiry_str).strftime('%d/%m/%Y')
                     strike = float(row.get('Strike Price', 0))
                     instr = str(row.get('Instr', '')).strip().upper()
                     option_type = str(row.get('Option Type', '')).strip().upper()

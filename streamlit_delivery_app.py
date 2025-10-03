@@ -518,7 +518,7 @@ class StreamlitDeliveryApp:
                 'Underlying': p.underlying_ticker,
                 'Symbol': p.symbol,
                 'Bloomberg Ticker': p.bloomberg_ticker,
-                'Expiry': p.expiry_date.strftime('%Y-%m-%d'),
+                'Expiry': p.expiry_date.strftime('%d/%m/%Y'),
                 'Type': p.security_type,
                 'Strike': p.strike_price if p.strike_price > 0 else '',
                 'Position (Lots)': p.position_lots,

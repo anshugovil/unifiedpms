@@ -197,7 +197,7 @@ class PositionGrouper:
                 if not expiry:
                     continue
 
-                expiry_key = expiry.strftime('%Y-%m-%d')
+                expiry_key = expiry.strftime('%d/%m/%Y')
 
                 if expiry_key not in expiry_groups:
                     expiry_groups[expiry_key] = {
@@ -288,7 +288,7 @@ class PositionGrouper:
             detailed_data.append({
                 'Symbol': pos['symbol'],
                 'Bloomberg Ticker': pos['bloomberg_ticker'],
-                'Expiry': pos['expiry'].strftime('%Y-%m-%d') if pos['expiry'] else '',
+                'Expiry': pos['expiry'].strftime('%d/%m/%Y') if pos['expiry'] else '',
                 'Type': pos['security_type'],
                 'Strike': pos['strike'] if pos['strike'] else '',
                 'Position (Lots)': pos['position_lots'],
