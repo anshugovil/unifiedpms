@@ -62,27 +62,6 @@ class OutputGenerator:
         processed_trades_df.to_csv(processed_trades_file, index=False, date_format='%d/%m/%Y')
         output_files['processed_trades'] = processed_trades_file
         logger.info(f"Saved processed trades to {processed_trades_file}")
-
-        # Also save as Excel for better readability
-        try:
-            processed_trades_excel = self.output_dir / f"{self.account_prefix}{file_prefix}_3_processed_trades_{self.timestamp}.xlsx"
-            with pd.ExcelWriter(processed_trades_excel, engine='openpyxl', date_format='DD/MM/YYYY') as writer:
-                processed_trades_df.to_excel(writer, sheet_name='Processed Trades', index=False)
-                
-                # Auto-adjust column widths
-                worksheet = writer.sheets['Processed Trades']
-                for idx, column in enumerate(processed_trades_df.columns):
-                    max_length = max(
-                        processed_trades_df[column].astype(str).map(len).max(),
-                        len(str(column))
-                    )
-                    adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[chr(65 + idx % 26)].width = adjusted_width
-            
-            output_files['processed_trades_excel'] = processed_trades_excel
-            logger.info(f"Saved processed trades Excel to {processed_trades_excel}")
-        except Exception as e:
-            logger.warning(f"Could not save Excel file: {e}")
         
         # File 4: Final Position File
         final_pos_file = self.output_dir / f"{self.account_prefix}{file_prefix}_4_final_positions_{self.timestamp}.csv"

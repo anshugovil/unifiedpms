@@ -951,6 +951,15 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
                 output_dir.mkdir(parents=True, exist_ok=True)
 
             final_enhanced_file = output_dir / f"{account_prefix}final_enhanced_clearing_{timestamp}.csv"
+
+            # Format date columns as DD/MM/YYYY
+            if 'Expiry Dt' in final_enhanced_clearing_df.columns:
+                final_enhanced_clearing_df['Expiry Dt'] = pd.to_datetime(final_enhanced_clearing_df['Expiry Dt'], errors='coerce').dt.strftime('%d/%m/%Y')
+            if 'TD' in final_enhanced_clearing_df.columns:
+                final_enhanced_clearing_df['TD'] = final_enhanced_clearing_df['TD'].apply(
+                    lambda x: pd.to_datetime(x, errors='coerce').strftime('%d/%m/%Y') if pd.notna(x) and x != '' else ''
+                )
+
             final_enhanced_clearing_df.to_csv(final_enhanced_file, index=False)
             logger.info(f"Saved final enhanced clearing file: {final_enhanced_file}")
 

@@ -227,7 +227,7 @@ class EnhancedReconciliation:
     def _write_executive_summary(self, ws, pre_recon: Dict, post_recon: Dict):
         """Write executive summary of reconciliation"""
         ws.cell(row=1, column=1, value="POSITION RECONCILIATION EXECUTIVE SUMMARY").font = Font(bold=True, size=14)
-        ws.cell(row=2, column=1, value=f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        ws.cell(row=2, column=1, value=f"Generated: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
         
         row = 4
         

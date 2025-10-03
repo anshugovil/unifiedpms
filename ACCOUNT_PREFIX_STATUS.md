@@ -6,7 +6,6 @@
 - ✅ `AURIGIN_output_1_parsed_trades_*.csv`
 - ✅ `AURIGIN_output_2_starting_positions_*.csv`
 - ✅ `AURIGIN_output_3_processed_trades_*.csv`
-- ✅ `AURIGIN_output_3_processed_trades_*.xlsx`
 - ✅ `AURIGIN_output_4_final_positions_*.csv`
 - ✅ `AURIGIN_summary_report_*.txt`
 - ✅ `AURIGIN_MISSING_MAPPINGS_*.csv`

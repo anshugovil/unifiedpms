@@ -154,7 +154,6 @@ trade-processing-pipeline/
 - `output_1_parsed_trades_[timestamp].csv` - Raw parsed trades
 - `output_2_starting_positions_[timestamp].csv` - Initial positions
 - `output_3_processed_trades_[timestamp].csv` - Trades with strategies
-- `output_3_processed_trades_[timestamp].xlsx` - Excel version
 - `output_4_final_positions_[timestamp].csv` - Post-trade positions
 - `summary_report_[timestamp].txt` - Processing summary
 

@@ -566,18 +566,18 @@ class TradeReconciler:
 
             output_df = output_df[[col for col in final_cols if col in output_df.columns]]
 
-            # Format Expiry Dt as date (not datetime)
+            # Format Expiry Dt as DD/MM/YYYY string
             if 'Expiry Dt' in output_df.columns:
-                output_df['Expiry Dt'] = pd.to_datetime(output_df['Expiry Dt'], errors='coerce').dt.date
+                output_df['Expiry Dt'] = pd.to_datetime(output_df['Expiry Dt'], errors='coerce').dt.strftime('%d/%m/%Y')
 
-            # Format TD as date only if it has valid values
+            # Format TD as DD/MM/YYYY string, but preserve empty strings
             if 'TD' in output_df.columns:
-                # Convert TD to date, but preserve empty strings
+                # Convert TD to date string, but preserve empty strings
                 def convert_td(val):
                     if pd.isna(val) or val == '' or val is None:
                         return ''
                     try:
-                        return pd.to_datetime(val, errors='coerce').date()
+                        return pd.to_datetime(val, errors='coerce').strftime('%d/%m/%Y')
                     except:
                         return val
                 output_df['TD'] = output_df['TD'].apply(convert_td)
