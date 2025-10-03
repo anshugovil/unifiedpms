@@ -568,18 +568,26 @@ class OutputGenerator:
 
     def _send_completion_email(self, output_files: Dict[str, Path], email_recipients: List[str], stats: Dict):
         """Send email notification when processing is complete"""
+        if not email_recipients:
+            logger.info("No email recipients specified - skipping email")
+            return
+
         if not EMAIL_AVAILABLE:
             logger.warning("Email not sent - sendgrid package not installed")
+            logger.warning("Run: pip install sendgrid python-dotenv")
             return
 
         try:
+            logger.info(f"Attempting to send email to: {', '.join(email_recipients)}")
             email_sender = EmailSender()
 
             if not email_sender.is_enabled():
-                logger.warning("Email not sent - not configured")
+                logger.warning("Email not sent - SendGrid not configured")
+                logger.warning("Check .env file for SENDGRID_API_KEY and SENDGRID_FROM_EMAIL")
                 return
 
             # Send Stage 1 completion email
+            logger.info("Sending Stage 1 completion email...")
             success = email_sender.send_stage1_complete(
                 to_emails=email_recipients,
                 account_prefix=self.account_prefix,
@@ -589,9 +597,11 @@ class OutputGenerator:
             )
 
             if success:
-                logger.info(f"Completion email sent to {', '.join(email_recipients)}")
+                logger.info(f"✅ Email sent successfully to {', '.join(email_recipients)}")
             else:
-                logger.error("Failed to send completion email")
+                logger.error("❌ Failed to send completion email")
 
         except Exception as e:
-            logger.error(f"Error sending completion email: {e}")
+            logger.error(f"❌ Error sending completion email: {e}")
+            import traceback
+            logger.error(traceback.format_exc())

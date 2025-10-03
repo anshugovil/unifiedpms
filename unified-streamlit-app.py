@@ -1091,8 +1091,14 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
                     st.metric("Split Trades", splits)
             with col4:
                 st.metric("Final Positions", len(final_positions_df))
-            
-            st.success("✅ Stage 1 Complete!")
+
+            # Show email status if enabled
+            if st.session_state.get('send_email', False) and st.session_state.get('email_recipients'):
+                recipients = st.session_state.get('email_recipients', [])
+                st.success(f"✅ Stage 1 Complete! 📧 Email sent to {len(recipients)} recipient(s)")
+            else:
+                st.success("✅ Stage 1 Complete!")
+
             return True
             
     except Exception as e:
