@@ -871,6 +871,10 @@ def main():
     if NEW_FEATURES_AVAILABLE and st.session_state.get('enable_recon', False):
         tab_list.append("🔄 PMS Reconciliation")
 
+    # Show Broker Recon tab if reconciliation completed
+    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
+        tab_list.append("🏦 Broker Reconciliation")
+
     tab_list.extend(["📥 Downloads", "📘 Schema Info"])
     
     tabs = st.tabs(tab_list)
@@ -911,7 +915,13 @@ def main():
         with tabs[tab_index]:
             display_reconciliation_tab()
         tab_index += 1
-    
+
+    # Broker Reconciliation tab (only if completed)
+    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
+        with tabs[tab_index]:
+            display_broker_reconciliation_tab()
+        tab_index += 1
+
     with tabs[tab_index]:
         display_downloads()
     tab_index += 1
@@ -2732,6 +2742,189 @@ def display_pre_post_comparison():
     with col3:
         new_underlyings = len(post_grouped) - len(pre_grouped)
         st.metric("Underlyings", len(post_grouped), delta=f"{new_underlyings:+d}")
+
+def display_broker_reconciliation_tab():
+    """Display broker reconciliation results with trade breaks and commission analysis"""
+    st.header("🏦 Broker Reconciliation")
+
+    if not st.session_state.get('broker_recon_complete'):
+        st.info("No broker reconciliation results available. Run reconciliation in the Pipeline Overview tab.")
+        return
+
+    # Get the reconciliation report file
+    recon_report = st.session_state.get('broker_recon_report')
+    if not recon_report or not Path(recon_report).exists():
+        st.warning("Reconciliation report file not found.")
+        return
+
+    try:
+        # Read the Excel file with all sheets
+        excel_file = pd.ExcelFile(recon_report)
+
+        # Get summary data
+        result = st.session_state.get('broker_recon_result', {})
+
+        # Summary metrics at top
+        st.subheader("📊 Reconciliation Summary")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Matched Trades", result.get('matched_count', 0))
+        with col2:
+            st.metric("Match Rate", f"{result.get('match_rate', 0):.1f}%")
+        with col3:
+            st.metric("Unmatched Clearing", result.get('unmatched_clearing_count', 0))
+        with col4:
+            st.metric("Unmatched Broker", result.get('unmatched_broker_count', 0))
+
+        st.divider()
+
+        # Create tabs for different views
+        tab1, tab2, tab3 = st.tabs(["📉 Trade Breaks", "💰 Commission Analysis", "📋 All Data"])
+
+        with tab1:
+            st.subheader("Unmatched Trades")
+
+            # Unmatched Clearing Trades
+            if 'Unmatched Clearing' in excel_file.sheet_names:
+                unmatched_clearing = pd.read_excel(recon_report, sheet_name='Unmatched Clearing')
+
+                if not unmatched_clearing.empty:
+                    st.markdown(f"**🔴 Unmatched Clearing Trades: {len(unmatched_clearing)}**")
+
+                    # Show diagnostic info
+                    if 'DIAGNOSTIC_Match_Failure_Reason' in unmatched_clearing.columns:
+                        st.caption("Reasons for failure:")
+                        reason_counts = unmatched_clearing['DIAGNOSTIC_Match_Failure_Reason'].value_counts()
+                        for reason, count in reason_counts.items():
+                            st.write(f"  • {reason}: {count} trade(s)")
+
+                    st.dataframe(unmatched_clearing, use_container_width=True, height=300)
+                else:
+                    st.success("✅ All clearing trades matched!")
+
+            st.divider()
+
+            # Unmatched Broker Trades
+            if 'Unmatched Broker' in excel_file.sheet_names:
+                unmatched_broker = pd.read_excel(recon_report, sheet_name='Unmatched Broker')
+
+                if not unmatched_broker.empty:
+                    st.markdown(f"**🔴 Unmatched Broker Trades: {len(unmatched_broker)}**")
+
+                    # Show diagnostic info
+                    if 'DIAGNOSTIC_Match_Failure_Reason' in unmatched_broker.columns:
+                        st.caption("Reasons for failure:")
+                        reason_counts = unmatched_broker['DIAGNOSTIC_Match_Failure_Reason'].value_counts()
+                        for reason, count in reason_counts.items():
+                            st.write(f"  • {reason}: {count} trade(s)")
+
+                    st.dataframe(unmatched_broker, use_container_width=True, height=300)
+                else:
+                    st.success("✅ All broker trades matched!")
+
+        with tab2:
+            st.subheader("Commission & Tax Analysis")
+
+            if 'Commission Report' in excel_file.sheet_names:
+                comm_report = pd.read_excel(recon_report, sheet_name='Commission Report')
+
+                if not comm_report.empty:
+                    # Separate trade-level data from summary
+                    # Summary rows have "BROKER SUMMARY" in Broker Name or "trades" in Bloomberg Ticker
+                    summary_start = comm_report[comm_report['Broker Name'] == 'BROKER SUMMARY'].index
+
+                    if len(summary_start) > 0:
+                        trade_data = comm_report.iloc[:summary_start[0]]
+                        summary_data = comm_report.iloc[summary_start[0]+1:]  # Skip the header row
+                    else:
+                        trade_data = comm_report
+                        summary_data = pd.DataFrame()
+
+                    # Display broker summary first
+                    if not summary_data.empty:
+                        st.markdown("### 📊 Summary by Broker & Product")
+
+                        # Clean up summary data
+                        summary_clean = summary_data.dropna(subset=['Broker Name'])
+
+                        if not summary_clean.empty:
+                            # Format for display
+                            display_cols = ['Broker Name', 'Broker Code', 'Instrument', 'Quantity',
+                                          'Trade Value', 'Brokerage', 'Comm Rate', 'Taxes', 'Tax Rate (%)']
+                            display_cols = [col for col in display_cols if col in summary_clean.columns]
+
+                            summary_display = summary_clean[display_cols].copy()
+
+                            # Format numbers
+                            if 'Trade Value' in summary_display.columns:
+                                summary_display['Trade Value'] = summary_display['Trade Value'].apply(
+                                    lambda x: f"₹{x:,.2f}" if pd.notna(x) and x != '' else ''
+                                )
+                            if 'Brokerage' in summary_display.columns:
+                                summary_display['Brokerage'] = summary_display['Brokerage'].apply(
+                                    lambda x: f"₹{x:,.2f}" if pd.notna(x) else ''
+                                )
+                            if 'Taxes' in summary_display.columns:
+                                summary_display['Taxes'] = summary_display['Taxes'].apply(
+                                    lambda x: f"₹{x:,.2f}" if pd.notna(x) else ''
+                                )
+                            if 'Tax Rate (%)' in summary_display.columns:
+                                summary_display['Tax Rate (%)'] = summary_display['Tax Rate (%)'].apply(
+                                    lambda x: f"{x:.4f}%" if pd.notna(x) and x != '' else ''
+                                )
+
+                            st.dataframe(summary_display, use_container_width=True, height=200)
+
+                    st.divider()
+
+                    # Trade-level details
+                    if not trade_data.empty:
+                        st.markdown("### 📝 Trade-Level Details")
+
+                        # Add filters
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if 'Broker Name' in trade_data.columns:
+                                brokers = ['All'] + sorted(trade_data['Broker Name'].dropna().unique().tolist())
+                                selected_broker = st.selectbox("Filter by Broker", brokers)
+
+                        with col2:
+                            if 'Instrument' in trade_data.columns:
+                                instruments = ['All'] + sorted(trade_data['Instrument'].dropna().unique().tolist())
+                                selected_instrument = st.selectbox("Filter by Instrument", instruments)
+
+                        # Apply filters
+                        filtered_data = trade_data.copy()
+                        if selected_broker != 'All' and 'Broker Name' in filtered_data.columns:
+                            filtered_data = filtered_data[filtered_data['Broker Name'] == selected_broker]
+                        if selected_instrument != 'All' and 'Instrument' in filtered_data.columns:
+                            filtered_data = filtered_data[filtered_data['Instrument'] == selected_instrument]
+
+                        st.caption(f"Showing {len(filtered_data)} of {len(trade_data)} trades")
+                        st.dataframe(filtered_data, use_container_width=True, height=400)
+                else:
+                    st.info("No commission data available")
+            else:
+                st.warning("Commission Report sheet not found in reconciliation file")
+
+        with tab3:
+            st.subheader("Complete Reconciliation Data")
+
+            # Show all sheets
+            sheet_tabs = st.tabs(excel_file.sheet_names)
+
+            for i, sheet_name in enumerate(excel_file.sheet_names):
+                with sheet_tabs[i]:
+                    df = pd.read_excel(recon_report, sheet_name=sheet_name)
+                    st.caption(f"{len(df)} rows")
+                    st.dataframe(df, use_container_width=True, height=500)
+
+    except Exception as e:
+        st.error(f"Error loading reconciliation report: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+
 
 def display_schema_info():
     """Display schema information"""
