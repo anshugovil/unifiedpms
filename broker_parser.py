@@ -97,6 +97,34 @@ class BrokerParserBase:
                 parsed_row['lots'] = float(row[col]) if pd.notna(row[col]) else 0
                 return
 
+    def _get_broker_code_from_row(self, row, df: pd.DataFrame, default_code: int) -> int:
+        """
+        Get broker code from row, reading from Broker Code or TM Code columns if available.
+        Falls back to default_code if not found.
+
+        Args:
+            row: DataFrame row
+            df: Full DataFrame (to check column existence)
+            default_code: Default broker code to use if not found in file
+
+        Returns:
+            Broker code as integer
+        """
+        # Check for broker code columns
+        broker_code_columns = ['Broker Code', 'BrokerNSECode', 'Broker NSE Code', 'TM Code', 'TM_Code']
+
+        for col in broker_code_columns:
+            if col in df.columns and pd.notna(row.get(col)):
+                try:
+                    broker_code_str = str(row[col]).strip().lstrip('0')
+                    if broker_code_str:
+                        return abs(int(float(broker_code_str)))
+                except:
+                    continue
+
+        # No broker code found, return default
+        return default_code
+
     def _load_mappings(self):
         """Load futures mapping file"""
         try:
@@ -512,7 +540,7 @@ class KotakParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 8081,  # Kotak code
+                        'broker_code': self._get_broker_code_from_row(row, df, 8081),  # Read from file, default Kotak
                         'side': side_normalized,
                         'quantity': quantity,
                         'price': float(row['Traded Price']),
@@ -621,7 +649,7 @@ class KotakParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': '',  # Not available in this format
-                        'broker_code': 8081,  # Kotak code
+                        'broker_code': self._get_broker_code_from_row(row, df, 8081),  # Read from file, default Kotak
                         'side': side_normalized,
                         'quantity': quantity,
                         'price': float(row['Traded Price']),
@@ -771,7 +799,7 @@ class IIFLParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 10975,  # IIFL code
+                        'broker_code': self._get_broker_code_from_row(row, df, 10975),  # Read from file, default IIFL
                         'side': side,
                         'quantity': quantity,
                         'price': float(row['ConfPrice']),
@@ -926,7 +954,7 @@ class AxisParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 13872,  # Axis code
+                        'broker_code': self._get_broker_code_from_row(row, df, 13872),  # Read from file, default Axis
                         'side': side,
                         'quantity': quantity,
                         'price': float(row['Mkt Price']),
@@ -1070,13 +1098,6 @@ class EquirusParser(BrokerParserBase):
                     # Get CP code
                     cp_code = str(row['CP Code']).strip().upper()
 
-                    # Get broker code from file if available, otherwise use default
-                    broker_code = 13017  # Default Equirus code
-                    if 'Broker Code' in df.columns and pd.notna(row['Broker Code']):
-                        broker_code = abs(int(row['Broker Code']))
-                    elif 'TM Code' in df.columns and pd.notna(row['TM Code']):
-                        broker_code = abs(int(row['TM Code']))
-
                     # Get trade date - handle Timestamp objects
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
@@ -1091,7 +1112,7 @@ class EquirusParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': broker_code,
+                        'broker_code': self._get_broker_code_from_row(row, df, 13017),  # Read from file, default Equirus
                         'side': side_normalized,
                         'quantity': quantity,
                         'price': float(row['Mkt. Rate']),
@@ -1256,7 +1277,7 @@ class EdelweissParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 11933,  # Edelweiss code
+                        'broker_code': self._get_broker_code_from_row(row, df, 11933),  # Read from file, default Edelweiss
                         'side': side,
                         'quantity': quantity,
                         'price': float(row['Mkt. Price']),
@@ -1688,7 +1709,7 @@ class AntiqueParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 12987,  # Antique code
+                        'broker_code': self._get_broker_code_from_row(row, df, 12987),  # Read from file, default Antique
                         'side': side_normalized,
                         'quantity': quantity,
                         'price': float(row['Mkt. Rate']),
