@@ -274,29 +274,38 @@ class TradeReconciler:
                         'read_error': f"Excel: {str(e)[:100]}, CSV: {str(csv_error)[:100]}"
                     }
 
-            # Method 1: Look for broker code columns
-            broker_code_columns = ['Broker Code', 'BrokerNSECode', 'Broker NSE Code', 'TM Code']
+            # Method 1: Look for broker code columns - THIS IS THE PRIMARY METHOD
+            broker_code_columns = ['Broker Code', 'BrokerNSECode', 'Broker NSE Code', 'TM Code', 'TM_Code', 'Broker_Code']
 
             for col in broker_code_columns:
                 if col in df.columns:
                     # Get first non-null broker code
-                    broker_codes = df[col].dropna().astype(str).str.strip()
+                    broker_codes = df[col].dropna()
                     if len(broker_codes) > 0:
-                        broker_code_str = broker_codes.iloc[0]
-                        try:
-                            # Strip leading zeros and convert to int
-                            broker_code = int(float(broker_code_str.lstrip('0'))) if broker_code_str.lstrip('0') else 0
-                        except:
-                            logger.warning(f"Could not parse broker code: {broker_code_str}")
-                            continue
+                        broker_code_str = str(broker_codes.iloc[0]).strip()
+                        logger.info(f"Found broker code column '{col}' with value: {broker_code_str}")
 
-                        # Look up broker by code
-                        broker_info = get_broker_by_code(broker_code)
-                        if broker_info:
-                            logger.info(f"Detected broker from {col}: {broker_info['name']} (code: {broker_code})")
-                            return broker_info
-                        else:
-                            logger.warning(f"Unknown broker code: {broker_code} from column {col}")
+                        try:
+                            # Remove any leading zeros and convert to int
+                            # Handle both string and numeric values
+                            if broker_code_str.replace('.', '').replace('-', '').isdigit():
+                                broker_code = abs(int(float(broker_code_str)))
+                            else:
+                                logger.warning(f"Broker code '{broker_code_str}' is not numeric, skipping")
+                                continue
+
+                            logger.info(f"Parsed broker code: {broker_code}")
+
+                            # Look up broker by code
+                            broker_info = get_broker_by_code(broker_code)
+                            if broker_info:
+                                logger.info(f"✓ Detected broker from {col}: {broker_info['name']} (code: {broker_code})")
+                                return broker_info
+                            else:
+                                logger.warning(f"Unknown broker code: {broker_code} from column {col}")
+                        except Exception as e:
+                            logger.warning(f"Could not parse broker code '{broker_code_str}': {e}")
+                            continue
 
             # Method 1b: Check Broker Name column if broker code didn't match
             if 'Broker Name' in df.columns:
@@ -372,12 +381,15 @@ class TradeReconciler:
                     logger.info(f"Detected Axis broker from column structure")
                     return broker_info
 
-            # Equirus has: 'Scrip Code', 'Call / Put', 'Pure Brokerage AMT', 'Cont. Ref.'
-            equirus_indicators = ['Scrip Code', 'Call / Put', 'Pure Brokerage AMT', 'Cont. Ref.']
-            if all(col in df.columns for col in equirus_indicators):
-                broker_info = get_broker_by_code(13017)  # Equirus code
+            # NOTE: Equirus and Antique have IDENTICAL column structures
+            # We CANNOT detect them by columns alone - they MUST have Broker Code column
+            # If detected by structure, we'll use Equirus parser as default (it reads broker code from each row)
+            equirus_antique_indicators = ['Scrip Code', 'Call / Put', 'Pure Brokerage AMT', 'CP Code']
+            if all(col in df.columns for col in equirus_antique_indicators):
+                # Default to Equirus parser (will read actual broker code from file data)
+                broker_info = get_broker_by_code(13017)
                 if broker_info:
-                    logger.info(f"Detected Equirus broker from column structure")
+                    logger.warning(f"Detected Equirus/Antique format by column structure - using Equirus parser (will read actual broker code from row data)")
                     return broker_info
 
             # Edelweiss has: 'Market Lot Size', 'No Of Traded Lots', 'OptType', 'Net Amount'
