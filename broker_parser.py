@@ -1070,6 +1070,13 @@ class EquirusParser(BrokerParserBase):
                     # Get CP code
                     cp_code = str(row['CP Code']).strip().upper()
 
+                    # Get broker code from file if available, otherwise use default
+                    broker_code = 13017  # Default Equirus code
+                    if 'Broker Code' in df.columns and pd.notna(row['Broker Code']):
+                        broker_code = abs(int(row['Broker Code']))
+                    elif 'TM Code' in df.columns and pd.notna(row['TM Code']):
+                        broker_code = abs(int(row['TM Code']))
+
                     # Get trade date - handle Timestamp objects
                     trade_date_val = row['Trade Date']
                     if pd.notna(trade_date_val):
@@ -1084,7 +1091,7 @@ class EquirusParser(BrokerParserBase):
                     parsed_row = {
                         'bloomberg_ticker': bloomberg_ticker,
                         'cp_code': cp_code,
-                        'broker_code': 13017,  # Equirus code
+                        'broker_code': broker_code,
                         'side': side_normalized,
                         'quantity': quantity,
                         'price': float(row['Mkt. Rate']),

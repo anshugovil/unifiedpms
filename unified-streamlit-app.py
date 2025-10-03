@@ -794,83 +794,7 @@ def main():
 
         if EMAIL_AVAILABLE and email_configured:
             st.success("✓ Email configured")
-
-            # Email toggle
-            send_email = st.checkbox(
-                "Send email on completion",
-                value=st.session_state.get('send_email', False),
-                key='send_email_toggle',
-                help="Send reports via email when processing completes"
-            )
-            st.session_state.send_email = send_email
-
-            if send_email:
-                # Show default recipient
-                from email_config import get_default_recipients
-                default_ops = get_default_recipients()
-                st.info(f"✅ Default: {', '.join(default_ops)}")
-
-                # Additional recipients
-                additional_recipients = st.session_state.get('additional_recipients', '')
-                recipients_input = st.text_area(
-                    "Additional Recipients (optional)",
-                    value=additional_recipients,
-                    placeholder="user1@example.com, user2@example.com",
-                    help="Add more recipients (operations@aurigincm.com is always included)"
-                )
-
-                # Combine default + additional
-                all_recipients = default_ops.copy()
-                if recipients_input:
-                    additional = [email.strip() for email in recipients_input.split(',') if email.strip()]
-                    for email in additional:
-                        if email not in all_recipients:
-                            all_recipients.append(email)
-                    st.session_state.additional_recipients = recipients_input
-
-                st.session_state.email_recipients = all_recipients
-                st.caption(f"📧 Total: {len(all_recipients)} recipient(s)")
-
-                # File attachments configuration
-                with st.expander("📎 Attachment Settings"):
-                    st.caption("Select which files to attach to emails")
-
-                    # Initialize defaults if not set
-                    if 'email_attach_csv' not in st.session_state:
-                        st.session_state.email_attach_csv = True
-                    if 'email_attach_summary' not in st.session_state:
-                        st.session_state.email_attach_summary = True
-                    if 'email_attach_missing' not in st.session_state:
-                        st.session_state.email_attach_missing = True
-                    if 'email_attach_recon' not in st.session_state:
-                        st.session_state.email_attach_recon = True
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.session_state.email_attach_csv = st.checkbox(
-                            "CSV Output Files",
-                            value=st.session_state.email_attach_csv,
-                            help="Parsed trades, positions, etc."
-                        )
-                        st.session_state.email_attach_summary = st.checkbox(
-                            "Summary Reports",
-                            value=st.session_state.email_attach_summary,
-                            help="Position summaries, statistics"
-                        )
-
-                    with col2:
-                        st.session_state.email_attach_missing = st.checkbox(
-                            "Missing Mappings",
-                            value=st.session_state.email_attach_missing,
-                            help="Missing ticker/strategy mappings"
-                        )
-                        st.session_state.email_attach_recon = st.checkbox(
-                            "Reconciliation Reports",
-                            value=st.session_state.email_attach_recon,
-                            help="Broker recon, enhanced clearing files"
-                        )
-
-                    st.caption("ℹ️ Large Excel files (>5MB) are excluded automatically")
+            st.info("📧 Configure email reports in the **Email Reports** tab")
         elif EMAIL_AVAILABLE and not email_configured:
             st.warning("⚠️ Email not configured")
             with st.expander("ℹ️ Setup Instructions"):
@@ -915,6 +839,10 @@ def main():
     # Show Broker Recon tab if reconciliation completed
     if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
         tab_list.append("🏦 Broker Reconciliation")
+
+    # Show Email Reports tab if email is configured and stage1 is complete
+    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete', False):
+        tab_list.append("📧 Email Reports")
 
     tab_list.extend(["📥 Downloads", "📘 Schema Info"])
     
@@ -961,6 +889,12 @@ def main():
     if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
         with tabs[tab_index]:
             display_broker_reconciliation_tab()
+        tab_index += 1
+
+    # Email Reports tab (only if email available and stage1 complete)
+    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete', False):
+        with tabs[tab_index]:
+            display_email_reports_tab()
         tab_index += 1
 
     with tabs[tab_index]:
@@ -1112,16 +1046,6 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
             st.session_state.final_enhanced_clearing_file = str(final_enhanced_file)
 
             # Generate output files
-            # Prepare file filter for email attachments
-            email_file_filter = None
-            if st.session_state.get('send_email', False):
-                email_file_filter = {
-                    'csv': st.session_state.get('email_attach_csv', True),
-                    'summary': st.session_state.get('email_attach_summary', True),
-                    'missing': st.session_state.get('email_attach_missing', True),
-                    'recon': st.session_state.get('email_attach_recon', True)
-                }
-
             output_files = output_gen.save_all_outputs(
                 parsed_trades_df,
                 starting_positions_df,
@@ -1130,9 +1054,9 @@ def process_stage1(position_file, trade_file, mapping_file, use_default, default
                 file_prefix="stage1",
                 input_parser=input_parser,
                 trade_parser=trade_parser,
-                send_email=st.session_state.get('send_email', False),
-                email_recipients=st.session_state.get('email_recipients', []),
-                email_file_filter=email_file_filter
+                send_email=False,  # Don't send automatically
+                email_recipients=[],
+                email_file_filter=None
             )
             
             # Store in session state
@@ -2976,6 +2900,295 @@ def display_broker_reconciliation_tab():
         st.error(f"Error loading reconciliation report: {e}")
         import traceback
         st.code(traceback.format_exc())
+
+
+def display_email_reports_tab():
+    """Display email reports configuration and sending"""
+    st.header("📧 Email Reports")
+
+    # Check if email is configured
+    try:
+        from email_config import EmailConfig, get_default_recipients
+        from email_sender import EmailSender
+
+        email_config = EmailConfig.from_streamlit_secrets()
+        if not email_config.is_configured():
+            st.warning("⚠️ Email not configured. Please configure Streamlit secrets first.")
+            st.info("See sidebar for setup instructions")
+            return
+    except Exception as e:
+        st.error(f"Error loading email configuration: {e}")
+        return
+
+    # Recipients section
+    st.subheader("📬 Recipients")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        default_ops = get_default_recipients()
+        st.info(f"✅ Default recipient (always included): {', '.join(default_ops)}")
+
+        additional_recipients = st.text_area(
+            "Additional Recipients (optional)",
+            value=st.session_state.get('email_additional_recipients', ''),
+            placeholder="user1@example.com, user2@example.com",
+            help="Enter additional email addresses (comma-separated)"
+        )
+        st.session_state.email_additional_recipients = additional_recipients
+
+    with col2:
+        # Calculate total recipients
+        all_recipients = default_ops.copy()
+        if additional_recipients:
+            additional = [email.strip() for email in additional_recipients.split(',') if email.strip()]
+            for email in additional:
+                if email not in all_recipients:
+                    all_recipients.append(email)
+
+        st.metric("Total Recipients", len(all_recipients))
+        with st.expander("View all recipients"):
+            for i, email in enumerate(all_recipients, 1):
+                st.write(f"{i}. {email}")
+
+    st.divider()
+
+    # Reports selection section
+    st.subheader("📄 Select Reports to Email")
+
+    # Collect available reports
+    available_reports = {}
+
+    # Deliverables report
+    if st.session_state.get('deliverables_file'):
+        deliverables_file = Path(st.session_state.deliverables_file)
+        if deliverables_file.exists():
+            available_reports['deliverables'] = {
+                'name': 'Deliverables Report',
+                'file': deliverables_file,
+                'description': 'Physical deliverables calculation with formulas',
+                'size': deliverables_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # Broker reconciliation report
+    if st.session_state.get('broker_recon_report'):
+        recon_file = Path(st.session_state.broker_recon_report)
+        if recon_file.exists():
+            available_reports['broker_recon'] = {
+                'name': 'Broker Reconciliation Report',
+                'file': recon_file,
+                'description': 'Trade breaks, commission analysis (5 sheets)',
+                'size': recon_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # Enhanced clearing file
+    if st.session_state.get('enhanced_clearing_file'):
+        enhanced_file = Path(st.session_state.enhanced_clearing_file)
+        if enhanced_file.exists():
+            available_reports['enhanced_clearing'] = {
+                'name': 'Enhanced Clearing File',
+                'file': enhanced_file,
+                'description': 'Clearing file with brokerage and taxes',
+                'size': enhanced_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # PMS Reconciliation report
+    if st.session_state.get('recon_file'):
+        recon_file = Path(st.session_state.recon_file)
+        if recon_file.exists():
+            available_reports['pms_recon'] = {
+                'name': 'PMS Reconciliation Report',
+                'file': recon_file,
+                'description': 'Position reconciliation report',
+                'size': recon_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # Positions by Underlying
+    if st.session_state.get('positions_by_underlying_file'):
+        positions_file = Path(st.session_state.positions_by_underlying_file)
+        if positions_file.exists():
+            available_reports['positions_underlying'] = {
+                'name': 'Positions by Underlying',
+                'file': positions_file,
+                'description': 'Positions grouped by underlying with Greeks',
+                'size': positions_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    # Expiry deliveries
+    if st.session_state.get('expiry_delivery_file'):
+        expiry_file = Path(st.session_state.expiry_delivery_file)
+        if expiry_file.exists():
+            available_reports['expiry_delivery'] = {
+                'name': 'Expiry Delivery Report',
+                'file': expiry_file,
+                'description': 'Physical delivery for expiring positions',
+                'size': expiry_file.stat().st_size / (1024 * 1024)  # MB
+            }
+
+    if not available_reports:
+        st.info("No reports available yet. Process trades to generate reports.")
+        return
+
+    # Display available reports with checkboxes
+    st.write("Select which reports to email:")
+
+    selected_reports = {}
+    for report_id, report_info in available_reports.items():
+        col1, col2, col3 = st.columns([3, 2, 1])
+
+        with col1:
+            # Initialize session state for checkbox
+            checkbox_key = f'email_select_{report_id}'
+            if checkbox_key not in st.session_state:
+                # Default to checked for deliverables, broker_recon, and pms_recon
+                st.session_state[checkbox_key] = report_id in ['deliverables', 'broker_recon', 'pms_recon']
+
+            selected = st.checkbox(
+                report_info['name'],
+                value=st.session_state[checkbox_key],
+                key=f'email_checkbox_{report_id}',
+                help=report_info['description']
+            )
+            st.session_state[checkbox_key] = selected
+
+            if selected:
+                selected_reports[report_id] = report_info
+
+        with col2:
+            st.caption(f"📄 {report_info['file'].name}")
+
+        with col3:
+            # Show size warning if > 5MB
+            if report_info['size'] > 5:
+                st.warning(f"⚠️ {report_info['size']:.1f}MB")
+            else:
+                st.caption(f"{report_info['size']:.1f}MB")
+
+    st.divider()
+
+    # Send email section
+    st.subheader("📤 Send Email")
+
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        if len(selected_reports) == 0:
+            st.warning("⚠️ No reports selected")
+        else:
+            st.success(f"✅ {len(selected_reports)} report(s) selected")
+
+            # Show what will be sent
+            with st.expander("Review email details"):
+                st.markdown("**Recipients:**")
+                for email in all_recipients:
+                    st.write(f"  • {email}")
+
+                st.markdown("**Attachments:**")
+                total_size = 0
+                for report_info in selected_reports.values():
+                    st.write(f"  • {report_info['name']} ({report_info['size']:.1f}MB)")
+                    total_size += report_info['size']
+
+                st.caption(f"Total attachment size: {total_size:.1f}MB")
+
+                if total_size > 25:
+                    st.error("⚠️ Total size exceeds SendGrid limit (25MB)")
+
+    with col2:
+        # Email subject customization
+        subject_suffix = st.text_input(
+            "Subject suffix (optional)",
+            value=st.session_state.get('email_subject_suffix', ''),
+            placeholder="e.g., EOD Report"
+        )
+        st.session_state.email_subject_suffix = subject_suffix
+
+    with col3:
+        # Send button
+        send_button = st.button(
+            "📧 Send Now",
+            type="primary",
+            disabled=(len(selected_reports) == 0 or len(all_recipients) == 0),
+            use_container_width=True
+        )
+
+    if send_button:
+        if len(all_recipients) == 0:
+            st.error("❌ No recipients specified")
+            return
+
+        if len(selected_reports) == 0:
+            st.error("❌ No reports selected")
+            return
+
+        # Calculate total size
+        total_size = sum(r['size'] for r in selected_reports.values())
+        if total_size > 25:
+            st.error(f"❌ Total attachment size ({total_size:.1f}MB) exceeds SendGrid limit (25MB)")
+            st.info("💡 Tip: Deselect some reports or download them separately")
+            return
+
+        # Send email
+        with st.spinner("Sending email..."):
+            try:
+                email_sender = EmailSender()
+
+                # Prepare attachments
+                attachments = [report_info['file'] for report_info in selected_reports.values()]
+
+                # Prepare email body
+                report_list = "\n".join([f"  • {r['name']}" for r in selected_reports.values()])
+
+                # Format subject
+                from datetime import datetime
+                date_str = datetime.now().strftime('%d/%m/%Y')
+                account_prefix = st.session_state.get('account_prefix', '').rstrip('_')
+                fund_name = 'Aurigin' if account_prefix == 'AURIGIN' else account_prefix
+
+                subject = f"{fund_name} | Reports | {date_str}"
+                if subject_suffix:
+                    subject += f" | {subject_suffix}"
+
+                body = f"""
+                <h2>Trade Processing Reports</h2>
+
+                <p>Please find the requested reports attached.</p>
+
+                <h3>Included Reports:</h3>
+                <ul>
+{chr(10).join([f"<li><strong>{r['name']}</strong>: {r['description']}</li>" for r in selected_reports.values()])}
+                </ul>
+
+                <h3>Summary:</h3>
+                <ul>
+                    <li><strong>Date:</strong> {date_str}</li>
+                    <li><strong>Reports:</strong> {len(selected_reports)}</li>
+                    <li><strong>Total Size:</strong> {total_size:.1f}MB</li>
+                </ul>
+
+                <hr>
+                <p style="color: #666; font-size: 12px;">
+                This is an automated email from the Trade Processing System.<br>
+                Generated on {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                </p>
+                """
+
+                success = email_sender.send_email(
+                    to_emails=all_recipients,
+                    subject=subject,
+                    html_body=body,
+                    attachments=attachments
+                )
+
+                if success:
+                    st.success(f"✅ Email sent successfully to {len(all_recipients)} recipient(s)!")
+                    st.balloons()
+                else:
+                    st.error("❌ Failed to send email. Check logs for details.")
+
+            except Exception as e:
+                st.error(f"❌ Error sending email: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
 
 def display_schema_info():
