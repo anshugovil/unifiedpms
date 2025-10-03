@@ -91,7 +91,7 @@ class BrokerParserBase:
     def _add_lots_if_available(self, parsed_row: dict, row, df: pd.DataFrame):
         """Add lots to parsed row if available in source data"""
         # Check for various lot column names
-        lot_columns = ['Lots traded', 'Lots Traded', 'Lots', 'lots', 'Contract Lot', 'Contract Lots']
+        lot_columns = ['Lots traded', 'Lots Traded', 'Lots', 'lots', 'Contract Lot', 'Contract Lots', 'No Of Traded Lots', 'No. of Contracts']
         for col in lot_columns:
             if col in df.columns:
                 parsed_row['lots'] = float(row[col]) if pd.notna(row[col]) else 0
