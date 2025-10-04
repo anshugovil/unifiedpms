@@ -1861,11 +1861,100 @@ def display_email_reports_tab():
                 subject_label = subject_suffix if subject_suffix else "Reports"
                 subject = f"{fund_name} | {subject_label} | {date_str}"
 
+                # Build PMS Reconciliation summary if available
+                pms_recon_section = ""
+                if st.session_state.get('recon_complete') and st.session_state.get('recon_data'):
+                    recon_data = st.session_state.recon_data
+
+                    # Get pre-trade reconciliation data (or use it as single recon if both are same)
+                    pre_recon = recon_data.get('pre_trade', {})
+                    post_recon = recon_data.get('post_trade', {})
+
+                    # Check if simple mode (pre == post)
+                    is_simple_mode = (pre_recon == post_recon)
+
+                    if is_simple_mode and pre_recon:
+                        # Simple mode: single reconciliation
+                        total_pms = pre_recon.get('total_pms_positions', 0)
+                        total_system = pre_recon.get('total_system_positions', 0)
+                        mismatches = pre_recon.get('position_mismatches', [])
+                        missing_in_pms = pre_recon.get('missing_in_pms', [])
+                        missing_in_system = pre_recon.get('missing_in_system', [])
+
+                        total_issues = len(mismatches) + len(missing_in_pms) + len(missing_in_system)
+
+                        pms_recon_section = f"""
+                <h3 style="color: {'#d32f2f' if total_issues > 0 else '#2e7d32'};">PMS Position Reconciliation:</h3>
+                <ul>
+                    <li><strong>Total PMS Positions:</strong> {total_pms}</li>
+                    <li><strong>Total System Positions:</strong> {total_system}</li>
+                    <li><strong>Quantity Mismatches:</strong> {len(mismatches)}</li>
+                    <li><strong>Missing in PMS:</strong> {len(missing_in_pms)}</li>
+                    <li><strong>Missing in System:</strong> {len(missing_in_system)}</li>
+                    <li><strong>Total Issues:</strong> <span style="color: {'#d32f2f' if total_issues > 0 else '#2e7d32'};">{total_issues}</span></li>
+                </ul>
+"""
+
+                        # Add list of failed positions if there are issues
+                        if total_issues > 0:
+                            pms_recon_section += """
+                <h4 style="color: #d32f2f;">Failed Positions:</h4>
+                <ul>
+"""
+                            # Add mismatches
+                            for mismatch in mismatches[:10]:  # Limit to first 10
+                                symbol = mismatch.get('symbol', 'Unknown')
+                                system_qty = mismatch.get('system_quantity', 0)
+                                pms_qty = mismatch.get('pms_quantity', 0)
+                                pms_recon_section += f"""                    <li><strong>{symbol}:</strong> System={system_qty}, PMS={pms_qty} (Mismatch)</li>
+"""
+
+                            # Add missing in PMS
+                            for missing in missing_in_pms[:5]:  # Limit to first 5
+                                symbol = missing.get('symbol', 'Unknown')
+                                qty = missing.get('system_quantity', 0)
+                                pms_recon_section += f"""                    <li><strong>{symbol}:</strong> Qty={qty} (Missing in PMS)</li>
+"""
+
+                            # Add missing in system
+                            for missing in missing_in_system[:5]:  # Limit to first 5
+                                symbol = missing.get('symbol', 'Unknown')
+                                qty = missing.get('pms_quantity', 0)
+                                pms_recon_section += f"""                    <li><strong>{symbol}:</strong> Qty={qty} (Missing in System)</li>
+"""
+
+                            if total_issues > 20:
+                                pms_recon_section += f"""                    <li><em>... and {total_issues - 20} more (see attached report)</em></li>
+"""
+
+                            pms_recon_section += """                </ul>
+"""
+
+                    elif pre_recon and post_recon:
+                        # Complex mode: show both pre and post trade
+                        pre_mismatches = pre_recon.get('position_mismatches', [])
+                        post_mismatches = post_recon.get('position_mismatches', [])
+                        pre_missing_pms = pre_recon.get('missing_in_pms', [])
+                        post_missing_pms = post_recon.get('missing_in_pms', [])
+
+                        pre_issues = len(pre_mismatches) + len(pre_missing_pms) + len(pre_recon.get('missing_in_system', []))
+                        post_issues = len(post_mismatches) + len(post_missing_pms) + len(post_recon.get('missing_in_system', []))
+
+                        pms_recon_section = f"""
+                <h3 style="color: {'#d32f2f' if (pre_issues > 0 or post_issues > 0) else '#2e7d32'};">PMS Reconciliation Summary:</h3>
+                <ul>
+                    <li><strong>Pre-Trade Issues:</strong> {pre_issues}</li>
+                    <li><strong>Post-Trade Issues:</strong> {post_issues}</li>
+                </ul>
+                <p><em>See attached PMS Reconciliation report for details.</em></p>
+"""
+
                 body = f"""
                 <h2>Trade Processing Reports</h2>
 
                 <p>Please find the requested reports attached.</p>
 
+{pms_recon_section}
                 <h3>Included Reports:</h3>
                 <ul>
 {chr(10).join([f"<li><strong>{r['name']}</strong>: {r['description']}</li>" for r in selected_reports.values()])}
