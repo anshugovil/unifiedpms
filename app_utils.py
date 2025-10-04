@@ -154,7 +154,7 @@ def apply_custom_css():
             padding: 0.5rem 1rem 0rem 1rem;
         }
         .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 2rem !important;
             padding-bottom: 1rem !important;
         }
 
@@ -162,14 +162,14 @@ def apply_custom_css():
         h1 {
             color: #1f77b4;
             font-size: 1.8rem !important;
-            margin-top: 0.5rem !important;
-            margin-bottom: 0.5rem !important;
-            padding-top: 0.2rem !important;
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.2rem !important;
+            padding-top: 0rem !important;
         }
         h2 {
             font-size: 1.3rem !important;
-            margin-top: 0.5rem !important;
-            margin-bottom: 0.1rem !important;
+            margin-top: 0.3rem !important;
+            margin-bottom: 0rem !important;
         }
         h3 {
             font-size: 1.1rem !important;
