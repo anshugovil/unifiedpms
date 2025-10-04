@@ -472,45 +472,6 @@ def main():
 
         st.divider()
 
-        # SETTINGS
-        st.header("⚙️ Settings")
-
-        # Mapping file
-        default_mapping = None
-        mapping_locations = [
-            "futures_mapping.csv", "futures mapping.csv",
-            "data/futures_mapping.csv", "data/futures mapping.csv"
-        ]
-
-        for location in mapping_locations:
-            if Path(location).exists():
-                default_mapping = location
-                break
-
-        if default_mapping:
-            use_default_mapping = st.checkbox(
-                f"Use {Path(default_mapping).name}",
-                value=True,
-                key="use_default_mapping"
-            )
-
-            if not use_default_mapping:
-                mapping_file = st.file_uploader(
-                    "Custom Mapping",
-                    type=['csv'],
-                    key='mapping_file'
-                )
-            else:
-                mapping_file = None
-        else:
-            st.warning("⚠️ No mapping found")
-            mapping_file = st.file_uploader(
-                "Upload Mapping",
-                type=['csv'],
-                key='mapping_file'
-            )
-            use_default_mapping = None
-
         # USD/INR Rate
         usdinr_rate = st.number_input(
             "USD/INR Rate",
@@ -522,8 +483,6 @@ def main():
         )
 
         # Reset button
-        st.header("🔄 Reset")
-        st.caption("Clear all data and start over")
         st.divider()
         if st.button("🔄 Reset", type="secondary", use_container_width=True):
             for key in list(st.session_state.keys()):
@@ -537,6 +496,22 @@ def main():
         if 'status_placeholder' not in st.session_state:
             st.session_state.status_placeholder = None
         status_placeholder = st.empty()
+
+    # Mapping file - always use default, no UI needed
+    default_mapping = None
+    mapping_locations = [
+        "futures_mapping.csv", "futures mapping.csv",
+        "data/futures_mapping.csv", "data/futures mapping.csv"
+    ]
+
+    for location in mapping_locations:
+        if Path(location).exists():
+            default_mapping = location
+            break
+
+    # Set mapping variables for processing
+    mapping_file = None
+    use_default_mapping = True if default_mapping else False
 
     # ==================== MAIN CONTENT AREA ====================
     # FILE UPLOADS IN MAIN AREA (moved from sidebar)
