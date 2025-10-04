@@ -510,6 +510,14 @@ def main():
                 del st.session_state[key]
             st.rerun()
 
+        # Status area at bottom of sidebar
+        st.divider()
+        st.caption("📊 Processing Status")
+        # Create empty placeholder for status messages
+        if 'status_placeholder' not in st.session_state:
+            st.session_state.status_placeholder = None
+        status_placeholder = st.empty()
+
     # ==================== MAIN CONTENT AREA ====================
     # FILE UPLOADS IN MAIN AREA (moved from sidebar)
     header_col1, header_col2 = st.columns([3, 1])
@@ -573,41 +581,43 @@ def main():
                 for i, broker_file in enumerate(broker_files):
                     broker_files[i], _, _ = handle_encrypted_file(broker_file, f"broker_file_{i}")
 
-            # Detect and validate accounts (skip if only Position + PMS)
-            if not (position_file and pms_file and not clearing_file and not broker_files):
-                detected_account, is_valid, validation_msg = detect_and_validate_accounts(
-                    position_file, position_password, clearing_file, clearing_password, broker_files
-                )
+            # Use sidebar status placeholder for all processing messages
+            with status_placeholder.container():
+                # Detect and validate accounts (skip if only Position + PMS)
+                if not (position_file and pms_file and not clearing_file and not broker_files):
+                    detected_account, is_valid, validation_msg = detect_and_validate_accounts(
+                        position_file, position_password, clearing_file, clearing_password, broker_files
+                    )
 
-                st.session_state.detected_account = detected_account
-                st.session_state.account_validated = is_valid
+                    st.session_state.detected_account = detected_account
+                    st.session_state.account_validated = is_valid
 
-                if validation_msg:
-                    status_type, message = validation_msg
-                    if status_type == "success":
-                        st.success(message)
-                    elif status_type == "warning":
-                        st.warning(message)
-                    elif status_type == "error":
-                        st.error(message)
-                        st.stop()  # Block processing on account mismatch
+                    if validation_msg:
+                        status_type, message = validation_msg
+                        if status_type == "success":
+                            st.success(message)
+                        elif status_type == "warning":
+                            st.warning(message)
+                        elif status_type == "error":
+                            st.error(message)
+                            st.stop()  # Block processing on account mismatch
 
-            # Run smart processing
-            results = smart_process_everything(
-                position_file, position_password, clearing_file, clearing_password,
-                broker_files, pms_file, mapping_file, use_default_mapping,
-                default_mapping, usdinr_rate
-            )
+                # Run smart processing
+                with st.spinner("⚡ Processing..."):
+                    results = smart_process_everything(
+                        position_file, position_password, clearing_file, clearing_password,
+                        broker_files, pms_file, mapping_file, use_default_mapping,
+                        default_mapping, usdinr_rate
+                    )
 
-            # Show results
-            st.divider()
-            if results['workflows_run']:
-                st.success(f"✅ Completed: {', '.join(results['workflows_run'])}")
+                # Show results in sidebar
+                if results['workflows_run']:
+                    st.success(f"✅ Completed: {', '.join(results['workflows_run'])}")
 
-            if results['workflows_skipped']:
-                st.info(f"ℹ️ Skipped: {', '.join(results['workflows_skipped'])}")
+                if results['workflows_skipped']:
+                    st.info(f"ℹ️ Skipped: {', '.join(results['workflows_skipped'])}")
 
-            if results['success'] and results['workflows_run']:
+            if results.get('success') and results.get('workflows_run'):
                 st.balloons()
 
     # Show what will run
