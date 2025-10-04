@@ -434,31 +434,28 @@ def main():
                         if not missing_df.empty:
                             st.dataframe(missing_df, use_container_width=True, height=150)
 
-            col1, col2 = st.columns(2)
+            # Fetch Yahoo button
+            if st.button("📊 Fetch Yahoo", use_container_width=True):
+                with st.spinner("Fetching..."):
+                    progress = st.progress(0)
 
-            with col1:
-                if st.button("📊 Fetch Yahoo", use_container_width=True):
-                    with st.spinner("Fetching..."):
-                        progress = st.progress(0)
+                    def update_progress(current, total):
+                        progress.progress(current / total)
 
-                        def update_progress(current, total):
-                            progress.progress(current / total)
+                    pm.fetch_all_prices_yahoo(update_progress)
+                    st.session_state.price_manager = pm
+                    st.success("✓ Updated")
+                    st.rerun()
 
-                        pm.fetch_all_prices_yahoo(update_progress)
-                        st.session_state.price_manager = pm
-                        st.success("✓ Updated")
-                        st.rerun()
+            # Price file uploader below
+            price_file = st.file_uploader(
+                "📂 Or upload price file",
+                type=['csv', 'xlsx'],
+                key="price_upload",
+                help="Custom price file"
+            )
 
-            with col2:
-                price_file = st.file_uploader(
-                    "Upload",
-                    type=['csv', 'xlsx'],
-                    key="price_upload",
-                    help="Custom price file",
-                    label_visibility="collapsed"
-                )
-
-                if price_file:
+            if price_file:
                     price_file, price_password, price_encrypted = handle_encrypted_file(price_file, "price_file")
 
                     if ENCRYPTED_FILE_SUPPORT and price_encrypted and price_password:

@@ -198,6 +198,29 @@ def apply_custom_css():
             font-size: 0.85rem !important;
             margin-bottom: 0.2rem !important;
         }
+        .stFileUploader > div {
+            padding: 0.3rem !important;
+        }
+        .stFileUploader [data-testid="stFileUploadDropzone"] {
+            padding: 0.5rem !important;
+            min-height: 50px !important;
+        }
+        .stFileUploader [data-testid="stFileUploadDropzone"] > div {
+            padding: 0.3rem !important;
+        }
+        .stFileUploader [data-testid="stFileUploadDropzone"] button {
+            padding: 0.3rem 0.6rem !important;
+            font-size: 0.8rem !important;
+        }
+        .stFileUploader [data-testid="stFileUploadDropzone"] span {
+            font-size: 0.75rem !important;
+        }
+        .stFileUploader section {
+            padding: 0.3rem !important;
+        }
+        .stFileUploader small {
+            font-size: 0.7rem !important;
+        }
 
         /* Compact buttons */
         .stButton button {
