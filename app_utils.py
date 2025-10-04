@@ -169,7 +169,7 @@ def apply_custom_css():
         h2 {
             font-size: 1.3rem !important;
             margin-top: 0.5rem !important;
-            margin-bottom: 0.3rem !important;
+            margin-bottom: 0.1rem !important;
         }
         h3 {
             font-size: 1.1rem !important;
@@ -192,11 +192,13 @@ def apply_custom_css():
 
         /* Compact file uploaders */
         .stFileUploader {
-            padding: 0.3rem 0 !important;
+            padding: 0.1rem 0 !important;
+            margin-top: 0.1rem !important;
         }
         .stFileUploader label {
             font-size: 0.85rem !important;
-            margin-bottom: 0.2rem !important;
+            margin-bottom: 0.1rem !important;
+            margin-top: 0.1rem !important;
         }
         .stFileUploader > div {
             padding: 0.3rem !important;

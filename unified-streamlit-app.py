@@ -699,13 +699,5 @@ def main():
         display_schema_info()
 
 
-# Footer
-st.divider()
-st.markdown("""
-<div style='text-align: center; color: #666;'>
-    Trade Processing Pipeline v5.1 | Simplified & Flexible UI
-</div>
-""", unsafe_allow_html=True)
-
 if __name__ == "__main__":
     main()
