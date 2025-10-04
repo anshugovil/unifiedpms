@@ -735,45 +735,146 @@ def display_expiry_comparison(pre_data: dict, post_data: dict):
         st.metric("Net Consideration", f"₹{consid_change:+,.2f}")
 
 def display_reconciliation_tab():
-    """Display PMS reconciliation results"""
+    """Display PMS reconciliation results with detailed discrepancies"""
     st.header("🔄 PMS Position Reconciliation")
-    
+
     if not st.session_state.get('recon_complete'):
         st.info("Run the pipeline with PMS reconciliation enabled to see this analysis")
         return
-    
+
     data = st.session_state.recon_data
     pre_recon = data['pre_trade']
     post_recon = data['post_trade']
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Pre-Trade Reconciliation")
-        st.metric("Total Discrepancies", pre_recon['summary']['total_discrepancies'])
-        st.metric("Matched Positions", pre_recon['summary']['matched_count'])
-        st.metric("Mismatches", pre_recon['summary']['mismatch_count'])
-    
-    with col2:
-        st.subheader("Post-Trade Reconciliation")
-        st.metric("Total Discrepancies", post_recon['summary']['total_discrepancies'])
-        st.metric("Matched Positions", post_recon['summary']['matched_count'])
-        st.metric("Mismatches", post_recon['summary']['mismatch_count'])
-    
-    if pre_recon['position_mismatches'] or post_recon['position_mismatches']:
-        st.subheader("Position Mismatches")
-        
+
+    # Check if this is simple mode (same data for pre and post)
+    is_simple_mode = (pre_recon == post_recon)
+
+    if is_simple_mode:
+        # Simple mode: Position + PMS only
+        st.info("📊 Simple Reconciliation Mode (Current Positions vs PMS)")
+
+        recon = pre_recon
+
+        # Summary metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("✅ Matched Positions", recon['summary']['matched_count'])
+        with col2:
+            st.metric("⚠️ Quantity Mismatches", recon['summary']['mismatch_count'])
+        with col3:
+            st.metric("❌ Total Discrepancies", recon['summary']['total_discrepancies'])
+
+        st.divider()
+
+        # Detailed discrepancies
+        st.subheader("📋 Detailed Discrepancies")
+
+        # Position mismatches (quantity differences)
+        if recon.get('position_mismatches') and len(recon['position_mismatches']) > 0:
+            with st.expander("⚠️ Quantity Mismatches", expanded=True):
+                df = pd.DataFrame(recon['position_mismatches'])
+                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+                st.caption(f"**{len(df)} positions** with quantity differences between System and PMS")
+
+        # Missing in PMS
+        if recon.get('missing_in_pms') and len(recon['missing_in_pms']) > 0:
+            with st.expander(f"❌ Missing in PMS ({len(recon['missing_in_pms'])} positions)", expanded=True):
+                df = pd.DataFrame(recon['missing_in_pms'])
+                st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+                st.caption("Positions in System but **not found** in PMS")
+
+        # Missing in System
+        if recon.get('missing_in_system') and len(recon['missing_in_system']) > 0:
+            with st.expander(f"❌ Missing in System ({len(recon['missing_in_system'])} positions)", expanded=True):
+                df = pd.DataFrame(recon['missing_in_system'])
+                st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+                st.caption("Positions in PMS but **not found** in System")
+
+        # Matched positions (collapsible)
+        if recon.get('matched_positions') and len(recon['matched_positions']) > 0:
+            with st.expander(f"✅ Perfectly Matched ({len(recon['matched_positions'])} positions)"):
+                df = pd.DataFrame(recon['matched_positions'])
+                st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+                st.caption("Positions with **exact** quantity match")
+
+    else:
+        # Complex mode: Pre-trade and Post-trade reconciliation
+        st.info("📊 Complex Reconciliation Mode (Pre-Trade and Post-Trade vs PMS)")
+
+        # Summary metrics comparison
+        st.subheader("Summary Comparison")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### Pre-Trade")
+            st.metric("✅ Matched", pre_recon['summary']['matched_count'])
+            st.metric("⚠️ Mismatches", pre_recon['summary']['mismatch_count'])
+            st.metric("❌ Discrepancies", pre_recon['summary']['total_discrepancies'])
+
+        with col2:
+            st.markdown("### Post-Trade")
+            st.metric("✅ Matched", post_recon['summary']['matched_count'])
+            st.metric("⚠️ Mismatches", post_recon['summary']['mismatch_count'])
+            st.metric("❌ Discrepancies", post_recon['summary']['total_discrepancies'])
+
+        st.divider()
+
+        # Detailed discrepancies in tabs
+        st.subheader("📋 Detailed Discrepancies")
+
         tab1, tab2 = st.tabs(["Pre-Trade", "Post-Trade"])
-        
+
         with tab1:
-            if pre_recon['position_mismatches']:
-                df = pd.DataFrame(pre_recon['position_mismatches'])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-        
+            # Pre-trade position mismatches
+            if pre_recon.get('position_mismatches') and len(pre_recon['position_mismatches']) > 0:
+                with st.expander("⚠️ Quantity Mismatches", expanded=True):
+                    df = pd.DataFrame(pre_recon['position_mismatches'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+                    st.caption(f"**{len(df)} positions** with quantity differences")
+
+            # Missing in PMS
+            if pre_recon.get('missing_in_pms') and len(pre_recon['missing_in_pms']) > 0:
+                with st.expander(f"❌ Missing in PMS ({len(pre_recon['missing_in_pms'])} positions)", expanded=True):
+                    df = pd.DataFrame(pre_recon['missing_in_pms'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+
+            # Missing in System
+            if pre_recon.get('missing_in_system') and len(pre_recon['missing_in_system']) > 0:
+                with st.expander(f"❌ Missing in System ({len(pre_recon['missing_in_system'])} positions)", expanded=True):
+                    df = pd.DataFrame(pre_recon['missing_in_system'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+
+            # Matched positions
+            if pre_recon.get('matched_positions') and len(pre_recon['matched_positions']) > 0:
+                with st.expander(f"✅ Perfectly Matched ({len(pre_recon['matched_positions'])} positions)"):
+                    df = pd.DataFrame(pre_recon['matched_positions'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+
         with tab2:
-            if post_recon['position_mismatches']:
-                df = pd.DataFrame(post_recon['position_mismatches'])
-                st.dataframe(df, use_container_width=True, hide_index=True)
+            # Post-trade position mismatches
+            if post_recon.get('position_mismatches') and len(post_recon['position_mismatches']) > 0:
+                with st.expander("⚠️ Quantity Mismatches", expanded=True):
+                    df = pd.DataFrame(post_recon['position_mismatches'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+                    st.caption(f"**{len(df)} positions** with quantity differences")
+
+            # Missing in PMS
+            if post_recon.get('missing_in_pms') and len(post_recon['missing_in_pms']) > 0:
+                with st.expander(f"❌ Missing in PMS ({len(post_recon['missing_in_pms'])} positions)", expanded=True):
+                    df = pd.DataFrame(post_recon['missing_in_pms'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+
+            # Missing in System
+            if post_recon.get('missing_in_system') and len(post_recon['missing_in_system']) > 0:
+                with st.expander(f"❌ Missing in System ({len(post_recon['missing_in_system'])} positions)", expanded=True):
+                    df = pd.DataFrame(post_recon['missing_in_system'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
+
+            # Matched positions
+            if post_recon.get('matched_positions') and len(post_recon['matched_positions']) > 0:
+                with st.expander(f"✅ Perfectly Matched ({len(post_recon['matched_positions'])} positions)"):
+                    df = pd.DataFrame(post_recon['matched_positions'])
+                    st.dataframe(df, use_container_width=True, hide_index=True, height=300)
 
 def display_downloads():
     """Display download section"""
