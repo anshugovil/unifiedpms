@@ -583,24 +583,26 @@ def main():
 
             # Use sidebar status placeholder for all processing messages
             with status_placeholder.container():
-                # Detect and validate accounts (skip if only Position + PMS)
-                if not (position_file and pms_file and not clearing_file and not broker_files):
-                    detected_account, is_valid, validation_msg = detect_and_validate_accounts(
-                        position_file, position_password, clearing_file, clearing_password, broker_files
-                    )
+                # Always detect account (for file naming), but only validate/block for full pipeline
+                is_pms_only_mode = (position_file and pms_file and not clearing_file and not broker_files)
 
-                    st.session_state.detected_account = detected_account
-                    st.session_state.account_validated = is_valid
+                detected_account, is_valid, validation_msg = detect_and_validate_accounts(
+                    position_file, position_password, clearing_file, clearing_password, broker_files
+                )
 
-                    if validation_msg:
-                        status_type, message = validation_msg
-                        if status_type == "success":
-                            st.success(message)
-                        elif status_type == "warning":
-                            st.warning(message)
-                        elif status_type == "error":
-                            st.error(message)
-                            st.stop()  # Block processing on account mismatch
+                st.session_state.detected_account = detected_account
+                st.session_state.account_validated = is_valid
+
+                # Only show validation messages and block if not PMS-only mode
+                if not is_pms_only_mode and validation_msg:
+                    status_type, message = validation_msg
+                    if status_type == "success":
+                        st.success(message)
+                    elif status_type == "warning":
+                        st.warning(message)
+                    elif status_type == "error":
+                        st.error(message)
+                        st.stop()  # Block processing on account mismatch
 
                 # Run smart processing
                 with st.spinner("⚡ Processing..."):

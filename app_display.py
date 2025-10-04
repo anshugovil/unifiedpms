@@ -1875,8 +1875,9 @@ def display_email_reports_tab():
 
                     if is_simple_mode and pre_recon:
                         # Simple mode: single reconciliation
-                        total_pms = pre_recon.get('total_pms_positions', 0)
-                        total_system = pre_recon.get('total_system_positions', 0)
+                        summary = pre_recon.get('summary', {})
+                        total_pms = summary.get('total_pms_positions', 0)
+                        total_system = summary.get('total_system_positions', 0)
                         mismatches = pre_recon.get('position_mismatches', [])
                         missing_in_pms = pre_recon.get('missing_in_pms', [])
                         missing_in_system = pre_recon.get('missing_in_system', [])
@@ -1903,23 +1904,23 @@ def display_email_reports_tab():
 """
                             # Add mismatches
                             for mismatch in mismatches[:10]:  # Limit to first 10
-                                symbol = mismatch.get('symbol', 'Unknown')
-                                system_qty = mismatch.get('system_quantity', 0)
-                                pms_qty = mismatch.get('pms_quantity', 0)
+                                symbol = mismatch.get('Symbol', 'Unknown')
+                                system_qty = mismatch.get('System_Position', 0)
+                                pms_qty = mismatch.get('PMS_Position', 0)
                                 pms_recon_section += f"""                    <li><strong>{symbol}:</strong> System={system_qty}, PMS={pms_qty} (Mismatch)</li>
 """
 
                             # Add missing in PMS
                             for missing in missing_in_pms[:5]:  # Limit to first 5
-                                symbol = missing.get('symbol', 'Unknown')
-                                qty = missing.get('system_quantity', 0)
+                                symbol = missing.get('Symbol', 'Unknown')
+                                qty = missing.get('System_Position', 0)
                                 pms_recon_section += f"""                    <li><strong>{symbol}:</strong> Qty={qty} (Missing in PMS)</li>
 """
 
                             # Add missing in system
                             for missing in missing_in_system[:5]:  # Limit to first 5
-                                symbol = missing.get('symbol', 'Unknown')
-                                qty = missing.get('pms_quantity', 0)
+                                symbol = missing.get('Symbol', 'Unknown')
+                                qty = missing.get('PMS_Position', 0)
                                 pms_recon_section += f"""                    <li><strong>{symbol}:</strong> Qty={qty} (Missing in System)</li>
 """
 
