@@ -84,7 +84,7 @@ logger = logging.getLogger(__name__)
 
 # Page config
 st.set_page_config(
-    page_title="Trade Processing Pipeline - Simplified",
+    page_title="FnO Position and Trade Reconciliation System",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -331,7 +331,7 @@ def smart_process_everything(position_file, position_password, clearing_file, cl
 
 
 def main():
-    st.title("🎯 Trade Processing Pipeline")
+    st.title("🎯 FnO Position and Trade Reconciliation System")
 
     # Initialize price manager on first load
     if SIMPLE_PRICE_MANAGER_AVAILABLE and 'prices_initialized' not in st.session_state:
