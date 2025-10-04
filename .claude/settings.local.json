@@ -1,10 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)",
-      "Bash(for f in *.xxx)",
-      "Bash(do mv \"$f\" \"xxx_$f%.xxx\")",
-      "Bash(done)"
+      "Bash(for f in app_utils.py app_processing.py app_display.py unified-streamlit-app.py)",
+      "Bash(done)",
+      "Bash(python -m py_compile:*)"
     ],
     "deny": [],
     "ask": []
