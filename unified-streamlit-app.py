@@ -313,7 +313,14 @@ def smart_process_everything(position_file, position_password, clearing_file, cl
     if workflows['pms_recon'] and position_file and pms_file:
         st.info("🔄 Running PMS Reconciliation...")
         if NEW_FEATURES_AVAILABLE:
-            run_pms_reconciliation(pms_file)
+            run_pms_reconciliation(
+                pms_file,
+                position_file=position_file,
+                position_password=position_password,
+                mapping_file=mapping_file,
+                use_default_mapping=use_default_mapping,
+                default_mapping=default_mapping
+            )
             results['workflows_run'].append("PMS Position Reconciliation")
         else:
             results['workflows_skipped'].append("PMS Reconciliation (module not available)")

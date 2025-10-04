@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import logging
 import traceback
+import os
 from datetime import datetime
 
 # Import utility functions
@@ -576,55 +577,149 @@ def run_expiry_delivery_generation(account_prefix=""):
         logger.error(traceback.format_exc())
 
 
-def run_pms_reconciliation(pms_file):
-    """Run PMS reconciliation"""
+def run_pms_reconciliation(pms_file, position_file=None, position_password=None, mapping_file=None, use_default_mapping=None, default_mapping=None):
+    """
+    Run PMS reconciliation
+
+    Two modes:
+    1. Position + PMS only: Simple reconciliation (current positions vs PMS)
+    2. Position + Clearing + PMS: Complex reconciliation (pre-trade & post-trade vs PMS)
+    """
     if not NEW_FEATURES_AVAILABLE:
         st.error("Reconciliation module not available")
         return
 
     try:
-        if 'dataframes' not in st.session_state or 'stage1' not in st.session_state.dataframes:
-            st.error("Please complete Stage 1 first")
-            return
-
         temp_dir = get_temp_dir()
 
+        # Check if we have Stage 1 data (Position + Clearing scenario)
+        has_stage1_data = ('dataframes' in st.session_state and
+                          'stage1' in st.session_state.dataframes and
+                          st.session_state.dataframes['stage1'].get('starting_positions') is not None)
+
         with st.spinner("Running PMS reconciliation..."):
+            # Read PMS file
             with tempfile.NamedTemporaryFile(delete=False, suffix=Path(pms_file.name).suffix, dir=temp_dir) as tmp:
                 tmp.write(pms_file.getbuffer())
                 pms_path = tmp.name
-
-            stage1_data = st.session_state.dataframes['stage1']
-            starting_positions = stage1_data.get('starting_positions', pd.DataFrame())
-            final_positions = stage1_data.get('final_positions', pd.DataFrame())
 
             recon = EnhancedReconciliation()
             pms_df = recon.read_pms_file(pms_path)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = get_output_path(f"PMS_RECONCILIATION_{timestamp}.xlsx")
 
-            recon.create_comprehensive_recon_report(
-                starting_positions,
-                final_positions,
-                pms_df,
-                output_file
-            )
+            if has_stage1_data:
+                # COMPLEX MODE: Pre-trade and Post-trade reconciliation
+                st.info("📊 Running pre-trade and post-trade reconciliation...")
+
+                stage1_data = st.session_state.dataframes['stage1']
+                starting_positions = stage1_data.get('starting_positions', pd.DataFrame())
+                final_positions = stage1_data.get('final_positions', pd.DataFrame())
+
+                output_file = get_output_path(f"PMS_RECONCILIATION_{timestamp}.xlsx")
+
+                recon.create_comprehensive_recon_report(
+                    starting_positions,
+                    final_positions,
+                    pms_df,
+                    output_file
+                )
+
+                pre_recon = recon.reconcile_positions(starting_positions, pms_df, "Pre-Trade")
+                post_recon = recon.reconcile_positions(final_positions, pms_df, "Post-Trade")
+
+                st.session_state.recon_data = {
+                    'pre_trade': pre_recon,
+                    'post_trade': post_recon,
+                    'pms_df': pms_df
+                }
+
+                st.success(f"✅ Pre-trade and Post-trade reconciliation complete!")
+
+            else:
+                # SIMPLE MODE: Just reconcile current position file vs PMS
+                st.info("📊 Running position reconciliation against PMS...")
+
+                # Parse the position file
+                if not position_file:
+                    st.error("Position file required for PMS reconciliation")
+                    return
+
+                # Save position file to temp
+                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(position_file.name).suffix, dir=temp_dir) as tmp:
+                    tmp.write(position_file.getbuffer())
+                    pos_path = tmp.name
+
+                # Get mapping file path
+                if mapping_file:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', dir=temp_dir) as tmp:
+                        tmp.write(mapping_file.getbuffer())
+                        map_path = tmp.name
+                else:
+                    map_path = default_mapping if default_mapping else "futures mapping.csv"
+
+                # Parse position file
+                from input_parser import InputParser
+                input_parser = InputParser(map_path)
+
+                # Handle encrypted position file if needed
+                if position_password:
+                    from encrypted_file_handler import read_csv_or_excel_with_password
+                    success, pos_df, error = read_csv_or_excel_with_password(position_file, position_password)
+                    if not success:
+                        st.error(f"Failed to decrypt position file: {error}")
+                        return
+                    # Save decrypted data to temp file
+                    suffix = Path(position_file.name).suffix
+                    if suffix.lower() in ['.xls', '.xlsx']:
+                        suffix = '.xlsx'
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as tmp:
+                        if suffix == '.csv':
+                            pos_df.to_csv(tmp.name, index=False)
+                        else:
+                            pos_df.to_excel(tmp.name, index=False)
+                        pos_path = tmp.name
+
+                positions = input_parser.parse_file(pos_path)
+
+                if not positions:
+                    st.error("❌ No positions found in position file")
+                    return
+
+                st.success(f"✅ Parsed {len(positions)} positions")
+
+                # Convert to DataFrame
+                from position_manager import PositionManager
+                position_manager = PositionManager()
+                current_positions_df = position_manager.initialize_from_positions(positions)
+
+                # Run simple reconciliation
+                output_file = get_output_path(f"PMS_POSITION_RECONCILIATION_{timestamp}.xlsx")
+
+                # Single reconciliation (treat as pre-trade)
+                position_recon = recon.reconcile_positions(current_positions_df, pms_df, "Current")
+
+                # Create simple report (just one reconciliation)
+                # Use the same report generator but with same data for both pre and post
+                recon.create_comprehensive_recon_report(
+                    current_positions_df,
+                    current_positions_df,  # Same as starting for simple mode
+                    pms_df,
+                    output_file
+                )
+
+                st.session_state.recon_data = {
+                    'pre_trade': position_recon,
+                    'post_trade': position_recon,  # Same data for display
+                    'pms_df': pms_df
+                }
+
+                st.success(f"✅ Position reconciliation complete!")
 
             st.session_state.recon_file = output_file
             st.session_state.recon_complete = True
 
-            pre_recon = recon.reconcile_positions(starting_positions, pms_df, "Pre-Trade")
-            post_recon = recon.reconcile_positions(final_positions, pms_df, "Post-Trade")
-
-            st.session_state.recon_data = {
-                'pre_trade': pre_recon,
-                'post_trade': post_recon,
-                'pms_df': pms_df
-            }
-
-            st.success(f"✅ Reconciliation complete!")
-
+            # Cleanup
             try:
                 os.unlink(pms_path)
             except:
@@ -632,6 +727,7 @@ def run_pms_reconciliation(pms_file):
 
     except Exception as e:
         st.error(f"❌ Error in reconciliation: {str(e)}")
+        st.code(traceback.format_exc())
         logger.error(traceback.format_exc())
 
 
