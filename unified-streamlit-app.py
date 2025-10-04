@@ -392,8 +392,8 @@ def main():
                         if not missing_df.empty:
                             st.dataframe(missing_df, use_container_width=True, height=150)
 
-            # Fetch Yahoo button
-            if st.button("📊 Fetch Yahoo", use_container_width=True):
+            # Update prices button
+            if st.button("📊 Update Prices", use_container_width=True):
                 with st.spinner("Fetching..."):
                     progress = st.progress(0)
 
