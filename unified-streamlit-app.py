@@ -331,8 +331,7 @@ def smart_process_everything(position_file, position_password, clearing_file, cl
 
 
 def main():
-    st.title("🎯 Trade Processing Pipeline - Simplified")
-    st.markdown("### Upload files, click process - system runs what it can")
+    st.title("🎯 Trade Processing Pipeline")
 
     # Initialize price manager on first load
     if SIMPLE_PRICE_MANAGER_AVAILABLE and 'prices_initialized' not in st.session_state:
@@ -353,48 +352,7 @@ def main():
     if 'account_validator' not in st.session_state:
         st.session_state.account_validator = AccountValidator() if ACCOUNT_VALIDATION_AVAILABLE else None
 
-    # FILE UPLOADS IN MAIN AREA (moved from sidebar)
-    st.header("📂 Upload Files")
-    st.caption("*Upload any combination - system will auto-detect what to run*")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        position_file = st.file_uploader(
-            "Position File",
-            type=['xlsx', 'xls', 'csv'],
-            key='position_file',
-            help="BOD, Contract, or MS format"
-        )
-
-    with col2:
-        clearing_file = st.file_uploader(
-            "Clearing Trades",
-            type=['xlsx', 'xls', 'csv'],
-            key='clearing_file',
-            help="Clearing broker trade file"
-        )
-
-    with col3:
-        broker_files = st.file_uploader(
-            "Broker Trades (multiple OK)",
-            type=['xlsx', 'xls', 'csv'],
-            accept_multiple_files=True,
-            key='broker_files',
-            help="Executing broker files"
-        )
-
-    with col4:
-        pms_file = st.file_uploader(
-            "PMS Position File",
-            type=['xlsx', 'xls', 'csv'],
-            key='pms_file',
-            help="For PMS reconciliation"
-        )
-
-    st.divider()
-
-    # Sidebar - Cleaner now with just controls
+    # ==================== SIDEBAR (rendered first to define variables) ====================
     with st.sidebar:
         # Display detected account (if any)
         if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.get('detected_account'):
@@ -543,25 +501,66 @@ def main():
             key="usdinr_rate"
         )
 
+        # Reset button
+        st.header("🔄 Reset")
+        st.caption("Clear all data and start over")
         st.divider()
+        if st.button("🔄 Reset", type="secondary", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
 
-        # PROCESS BUTTON
-        st.header("🚀 Process")
+    # ==================== MAIN CONTENT AREA ====================
+    # FILE UPLOADS IN MAIN AREA (moved from sidebar)
+    header_col1, header_col2 = st.columns([3, 1])
 
-        # Determine what can run
-        workflows = determine_workflows(position_file, clearing_file, broker_files, pms_file)
+    with header_col1:
+        st.header("📂 Upload Files")
 
-        # Show what will run
-        if workflows['messages']:
-            for msg in workflows['messages']:
-                if msg.startswith("✅"):
-                    st.success(msg)
-                elif msg.startswith("⚠️"):
-                    st.warning(msg)
-                else:
-                    st.info(msg)
+    # Process button will go in header_col2 after files are uploaded
 
-        # Process button
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        position_file = st.file_uploader(
+            "Position File",
+            type=['xlsx', 'xls', 'csv'],
+            key='position_file',
+            help="BOD, Contract, or MS format"
+        )
+
+    with col2:
+        clearing_file = st.file_uploader(
+            "Clearing Trades",
+            type=['xlsx', 'xls', 'csv'],
+            key='clearing_file',
+            help="Clearing broker trade file"
+        )
+
+    with col3:
+        broker_files = st.file_uploader(
+            "Broker Trades (multiple OK)",
+            type=['xlsx', 'xls', 'csv'],
+            accept_multiple_files=True,
+            key='broker_files',
+            help="Executing broker files"
+        )
+
+    with col4:
+        pms_file = st.file_uploader(
+            "PMS Position File",
+            type=['xlsx', 'xls', 'csv'],
+            key='pms_file',
+            help="For PMS reconciliation"
+        )
+
+    # Determine what workflows can run
+    workflows = determine_workflows(position_file, clearing_file, broker_files, pms_file)
+
+    # Process button in header area
+    with header_col2:
+        st.write("")  # Spacing
+        st.write("")  # Spacing
         if st.button("⚡ Process Everything", type="primary", use_container_width=True,
                     disabled=not workflows['can_process']):
 
@@ -611,12 +610,17 @@ def main():
             if results['success'] and results['workflows_run']:
                 st.balloons()
 
-        # Reset button
-        st.divider()
-        if st.button("🔄 Reset", type="secondary", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+    # Show what will run
+    if workflows['messages']:
+        for msg in workflows['messages']:
+            if msg.startswith("✅"):
+                st.success(msg)
+            elif msg.startswith("⚠️"):
+                st.warning(msg)
+            else:
+                st.info(msg)
+
+    st.divider()
 
     # Main content tabs
     tab_list = ["📊 Overview", "🔄 Stage 1", "📋 Stage 2"]
