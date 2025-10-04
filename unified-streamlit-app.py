@@ -332,7 +332,7 @@ def smart_process_everything(position_file, position_password, clearing_file, cl
 
 def main():
     st.title("🎯 Trade Processing Pipeline - Simplified")
-    st.markdown("### Upload any combination of files - system runs what it can")
+    st.markdown("### Upload files, click process - system runs what it can")
 
     # Initialize price manager on first load
     if SIMPLE_PRICE_MANAGER_AVAILABLE and 'prices_initialized' not in st.session_state:
@@ -353,11 +353,49 @@ def main():
     if 'account_validator' not in st.session_state:
         st.session_state.account_validator = AccountValidator() if ACCOUNT_VALIDATION_AVAILABLE else None
 
-    # Sidebar
-    with st.sidebar:
-        st.header("📂 Upload Files")
-        st.markdown("*Upload any combination - system will auto-detect what to run*")
+    # FILE UPLOADS IN MAIN AREA (moved from sidebar)
+    st.header("📂 Upload Files")
+    st.caption("*Upload any combination - system will auto-detect what to run*")
 
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        position_file = st.file_uploader(
+            "Position File",
+            type=['xlsx', 'xls', 'csv'],
+            key='position_file',
+            help="BOD, Contract, or MS format"
+        )
+
+    with col2:
+        clearing_file = st.file_uploader(
+            "Clearing Trades",
+            type=['xlsx', 'xls', 'csv'],
+            key='clearing_file',
+            help="Clearing broker trade file"
+        )
+
+    with col3:
+        broker_files = st.file_uploader(
+            "Broker Trades (multiple OK)",
+            type=['xlsx', 'xls', 'csv'],
+            accept_multiple_files=True,
+            key='broker_files',
+            help="Executing broker files"
+        )
+
+    with col4:
+        pms_file = st.file_uploader(
+            "PMS Position File",
+            type=['xlsx', 'xls', 'csv'],
+            key='pms_file',
+            help="For PMS reconciliation"
+        )
+
+    st.divider()
+
+    # Sidebar - Cleaner now with just controls
+    with st.sidebar:
         # Display detected account (if any)
         if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.get('detected_account'):
             account = st.session_state.detected_account
@@ -380,38 +418,6 @@ def main():
                 unsafe_allow_html=True
             )
 
-        # FILE UPLOADS - All Optional
-        position_file = st.file_uploader(
-            "Position File (optional)",
-            type=['xlsx', 'xls', 'csv'],
-            key='position_file',
-            help="BOD, Contract, or MS format"
-        )
-
-        clearing_file = st.file_uploader(
-            "Clearing Trades File (optional)",
-            type=['xlsx', 'xls', 'csv'],
-            key='clearing_file',
-            help="Clearing broker trade file"
-        )
-
-        broker_files = st.file_uploader(
-            "Broker Trade Files (optional, multiple)",
-            type=['xlsx', 'xls', 'csv'],
-            accept_multiple_files=True,
-            key='broker_files',
-            help="Executing broker files (ICICI, Kotak, MS, etc.)"
-        )
-
-        pms_file = st.file_uploader(
-            "PMS Position File (optional)",
-            type=['xlsx', 'xls', 'csv'],
-            key='pms_file',
-            help="For PMS reconciliation"
-        )
-
-        st.divider()
-
         # PRICE MANAGEMENT
         st.header("💰 Price Management")
 
@@ -423,7 +429,7 @@ def main():
 
                 # Show missing symbols if any
                 if pm.missing_symbols:
-                    with st.expander(f"⚠️ {len(pm.missing_symbols)} Missing Prices", expanded=False):
+                    with st.expander(f"⚠️ {len(pm.missing_symbols)} Missing", expanded=False):
                         missing_df = pm.get_missing_symbols_report()
                         if not missing_df.empty:
                             st.dataframe(missing_df, use_container_width=True, height=150)
@@ -431,7 +437,7 @@ def main():
             col1, col2 = st.columns(2)
 
             with col1:
-                if st.button("📊 Fetch Yahoo", use_container_width=True, help="Refresh all prices from Yahoo Finance"):
+                if st.button("📊 Fetch Yahoo", use_container_width=True):
                     with st.spinner("Fetching..."):
                         progress = st.progress(0)
 
@@ -440,13 +446,12 @@ def main():
 
                         pm.fetch_all_prices_yahoo(update_progress)
                         st.session_state.price_manager = pm
-                        st.success("✓ Prices updated")
+                        st.success("✓ Updated")
                         st.rerun()
 
             with col2:
-                # Upload custom price file
                 price_file = st.file_uploader(
-                    "Or Upload",
+                    "Upload",
                     type=['csv', 'xlsx'],
                     key="price_upload",
                     help="Custom price file",
@@ -454,16 +459,14 @@ def main():
                 )
 
                 if price_file:
-                    # Handle encryption for price file
                     price_file, price_password, price_encrypted = handle_encrypted_file(price_file, "price_file")
 
-                    # Read the file
                     if ENCRYPTED_FILE_SUPPORT and price_encrypted and price_password:
                         success, price_df, error = read_csv_or_excel_with_password(price_file, price_password)
                         if success:
                             if pm.load_manual_prices(price_df):
                                 st.session_state.price_manager = pm
-                                st.success("✓ Custom prices loaded")
+                                st.success("✓ Loaded")
                                 st.rerun()
                     else:
                         try:
@@ -474,7 +477,7 @@ def main():
 
                             if pm.load_manual_prices(price_df):
                                 st.session_state.price_manager = pm
-                                st.success("✓ Custom prices loaded")
+                                st.success("✓ Loaded")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
@@ -485,12 +488,11 @@ def main():
                 if updated_csv is not None:
                     csv_data = updated_csv.to_csv(index=False)
                     st.download_button(
-                        label="💾 Save Updated Prices",
+                        label="💾 Save Prices",
                         data=csv_data,
                         file_name="default_stocks_updated.csv",
                         mime="text/csv",
-                        use_container_width=True,
-                        help="Download to replace default_stocks.csv"
+                        use_container_width=True
                     )
 
         st.divider()
@@ -519,19 +521,18 @@ def main():
 
             if not use_default_mapping:
                 mapping_file = st.file_uploader(
-                    "Custom Mapping File",
+                    "Custom Mapping",
                     type=['csv'],
                     key='mapping_file'
                 )
             else:
                 mapping_file = None
         else:
-            st.warning("⚠️ No default mapping found")
+            st.warning("⚠️ No mapping found")
             mapping_file = st.file_uploader(
-                "Upload Mapping File",
+                "Upload Mapping",
                 type=['csv'],
-                key='mapping_file',
-                help="Required for processing"
+                key='mapping_file'
             )
             use_default_mapping = None
 
@@ -620,11 +621,6 @@ def main():
                 del st.session_state[key]
             st.rerun()
 
-        # Email info
-        if EMAIL_AVAILABLE:
-            st.divider()
-            st.caption("📧 Configure emails in Email Reports tab")
-
     # Main content tabs
     tab_list = ["📊 Overview", "🔄 Stage 1", "📋 Stage 2"]
 
@@ -643,7 +639,8 @@ def main():
     if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete'):
         tab_list.append("🏦 Broker Recon")
 
-    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete'):
+    # Show email tab for any workflow that completed
+    if EMAIL_AVAILABLE and (st.session_state.get('stage1_complete') or st.session_state.get('recon_complete')):
         tab_list.append("📧 Email")
 
     tab_list.extend(["📥 Downloads", "📘 Schema"])
@@ -688,7 +685,7 @@ def main():
             display_broker_reconciliation_tab()
         tab_index += 1
 
-    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete'):
+    if EMAIL_AVAILABLE and (st.session_state.get('stage1_complete') or st.session_state.get('recon_complete')):
         with tabs[tab_index]:
             display_email_reports_tab()
         tab_index += 1
@@ -705,7 +702,7 @@ def main():
 st.divider()
 st.markdown("""
 <div style='text-align: center; color: #666;'>
-    Trade Processing Pipeline v5.0 | Simplified & Flexible
+    Trade Processing Pipeline v5.1 | Simplified & Flexible UI
 </div>
 """, unsafe_allow_html=True)
 
