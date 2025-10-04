@@ -77,3 +77,12 @@ def is_known_account(cp_code: str):
 def is_known_entity_code(entity_code: str):
     """Check if entity code is in registry"""
     return entity_code in ENTITY_CODE_MAP
+
+
+def get_account_by_name(name: str):
+    """Get account information by name (case-insensitive)"""
+    name_upper = name.upper()
+    for account in ACCOUNT_REGISTRY.values():
+        if account['name'].upper() == name_upper:
+            return account
+    return None

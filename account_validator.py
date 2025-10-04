@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Dict
 import pandas as pd
 from account_config import (
     ACCOUNT_REGISTRY, get_account_by_cp_code, get_all_cp_codes,
-    get_account_by_entity_code, get_all_entity_codes
+    get_account_by_entity_code, get_all_entity_codes, get_account_by_name
 )
 
 # Import encrypted file handler
@@ -124,6 +124,13 @@ class AccountValidator:
                     return account
                 else:
                     logger.warning(f"Entity Code {entity_code} found but not in registry")
+
+            # Search for account names (e.g., "AURIGIN", "WAFRA")
+            for account_data in ACCOUNT_REGISTRY.values():
+                account_name = account_data['name']
+                if account_name.upper() in search_text_upper:
+                    logger.info(f"✓ Found account name '{account_name}' in {file_type} file")
+                    return account_data
 
             # Search for each known CP code (case-insensitive)
             found_codes = []

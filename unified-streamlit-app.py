@@ -410,7 +410,7 @@ def main():
                 "📂 Or upload price file",
                 type=['csv', 'xlsx'],
                 key="price_upload",
-                help="Custom price file"
+                help="Expected format: CSV/Excel with 2 columns - 'Symbol' or 'Ticker' and 'Price'"
             )
 
             if price_file:
