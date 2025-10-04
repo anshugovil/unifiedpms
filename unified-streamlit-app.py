@@ -523,7 +523,7 @@ def main():
 
     with col1:
         position_file = st.file_uploader(
-            "Position File",
+            "Clearing Position File",
             type=['xlsx', 'xls', 'csv'],
             key='position_file',
             help="BOD, Contract, or MS format"
