@@ -1,6 +1,6 @@
 """
-Enhanced Unified Trade Processing Pipeline - REFACTORED & MODULAR
-Complete with proper viewing and downloading of expiry delivery files
+Enhanced Unified Trade Processing Pipeline - SIMPLIFIED & FLEXIBLE
+Upload any combination of files - system automatically runs what it can
 """
 
 import streamlit as st
@@ -10,9 +10,9 @@ import logging
 from datetime import datetime
 import io
 
-# Import our new modular components
+# Import our modular components
 from app_utils import (
-    is_streamlit_cloud, ensure_directories, get_temp_dir, 
+    is_streamlit_cloud, ensure_directories, get_temp_dir,
     initialize_session_state, apply_custom_css
 )
 from app_processing import (
@@ -84,7 +84,7 @@ logger = logging.getLogger(__name__)
 
 # Page config
 st.set_page_config(
-    page_title="Trade Processing Pipeline - Complete Edition",
+    page_title="Trade Processing Pipeline - Simplified",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -96,105 +96,263 @@ apply_custom_css()
 # Ensure directories exist
 ensure_directories()
 
+
+def handle_encrypted_file(uploaded_file, file_type_name):
+    """
+    Handle encryption for any uploaded file (.xls, .xlsx, .csv)
+    Returns: (file, password, is_encrypted)
+    """
+    password = None
+    is_encrypted = False
+
+    if not uploaded_file or not ENCRYPTED_FILE_SUPPORT:
+        return uploaded_file, password, is_encrypted
+
+    # Only check Excel files for encryption
+    if not uploaded_file.name.endswith(('.xlsx', '.xls')):
+        return uploaded_file, password, is_encrypted
+
+    # Try known passwords first
+    uploaded_file.seek(0)
+    auto_password = try_known_passwords(uploaded_file)
+    uploaded_file.seek(0)
+
+    if auto_password:
+        # Known password worked!
+        is_encrypted = True
+        password = auto_password
+        st.success(f"✓ Decrypted {file_type_name} automatically")
+        return uploaded_file, password, is_encrypted
+
+    # Check if file is encrypted
+    uploaded_file.seek(0)
+    if is_encrypted_excel(uploaded_file):
+        is_encrypted = True
+        uploaded_file.seek(0)
+
+        # Check for cached password
+        cache_key = f'cached_{file_type_name}_password'
+        if cache_key in st.session_state and st.session_state[cache_key]:
+            password = st.session_state[cache_key]
+        else:
+            # Prompt user for password
+            password = st.text_input(
+                f"{file_type_name} password:",
+                type="password",
+                key=f"{file_type_name}_password",
+                help="This file is encrypted. Known passwords failed, please enter password."
+            )
+            if password:
+                st.session_state[cache_key] = password
+
+    return uploaded_file, password, is_encrypted
+
+
+def detect_and_validate_accounts(position_file, position_password, clearing_file, clearing_password, broker_files):
+    """
+    Detect accounts from uploaded files and validate they match.
+    Returns: (detected_account, is_valid, message)
+    """
+    if not ACCOUNT_VALIDATION_AVAILABLE or not st.session_state.account_validator:
+        return None, True, None
+
+    validator = st.session_state.account_validator
+    detected_account = None
+
+    # Detect from position file
+    if position_file:
+        pos_account = validator.detect_account_in_position_file(position_file)
+        if pos_account:
+            detected_account = pos_account
+
+    # Detect from clearing file
+    if clearing_file:
+        clearing_account = validator.detect_account_in_trade_file(clearing_file)
+        if clearing_account:
+            detected_account = clearing_account
+
+    # Detect from broker files
+    if broker_files:
+        for broker_file in broker_files:
+            broker_account = validator.detect_account_in_trade_file(broker_file)
+            if broker_account:
+                detected_account = broker_account
+                break
+
+    # Validate match if we have multiple file types
+    if position_file and (clearing_file or broker_files):
+        is_valid, status_type, message = validator.validate_account_match()
+
+        # Update detected account
+        if validator.get_account_info():
+            detected_account = validator.get_account_info()
+
+        return detected_account, is_valid, (status_type, message)
+
+    return detected_account, True, None
+
+
+def determine_workflows(position_file, clearing_file, broker_files, pms_file):
+    """
+    Determine what workflows can be run based on uploaded files.
+    Returns: dict with workflow flags and messages
+    """
+    workflows = {
+        'full_pipeline': False,
+        'broker_recon': False,
+        'pms_recon': False,
+        'can_process': False,
+        'messages': []
+    }
+
+    # Position + Clearing = Full Pipeline
+    if position_file and clearing_file:
+        workflows['full_pipeline'] = True
+        workflows['can_process'] = True
+        workflows['messages'].append("✅ Full Pipeline (Stage 1, Stage 2, Deliverables, Expiry)")
+
+    # Broker files + Clearing = Broker Reconciliation
+    if clearing_file and broker_files and len(broker_files) > 0:
+        workflows['broker_recon'] = True
+        workflows['can_process'] = True
+        if not workflows['full_pipeline']:
+            workflows['messages'].append("✅ Broker Reconciliation")
+    elif broker_files and len(broker_files) > 0 and not clearing_file:
+        workflows['messages'].append("⚠️ Broker files uploaded but no clearing file - skipping broker recon")
+
+    # Position + PMS = PMS Reconciliation
+    if position_file and pms_file:
+        workflows['pms_recon'] = True
+        workflows['can_process'] = True
+        if not workflows['full_pipeline']:
+            workflows['messages'].append("✅ PMS Position Reconciliation")
+    elif pms_file and not position_file:
+        workflows['messages'].append("⚠️ PMS file uploaded but no position file - skipping PMS recon")
+
+    # Check for any valid workflow
+    if not workflows['can_process']:
+        workflows['messages'].append("❌ Please upload files to process")
+        workflows['messages'].append("📌 Minimum: Position + Clearing OR Position + PMS OR Clearing + Broker")
+
+    return workflows
+
+
+def smart_process_everything(position_file, position_password, clearing_file, clearing_password,
+                            broker_files, pms_file, mapping_file, use_default_mapping,
+                            default_mapping, usdinr_rate):
+    """
+    Smart orchestrator - runs whatever workflows are possible based on uploaded files
+    """
+    # Get account prefix
+    account_prefix = ""
+    if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
+        account_prefix = st.session_state.account_validator.get_account_prefix()
+
+    results = {
+        'success': True,
+        'workflows_run': [],
+        'workflows_skipped': []
+    }
+
+    # Determine what can run
+    workflows = determine_workflows(position_file, clearing_file, broker_files, pms_file)
+
+    # 1. BROKER RECONCILIATION (if applicable and files present)
+    if workflows['broker_recon'] and clearing_file and broker_files:
+        st.info("🏦 Running Broker Reconciliation...")
+        if BROKER_RECON_AVAILABLE:
+            if run_broker_reconciliation(clearing_file, broker_files, mapping_file, account_prefix):
+                results['workflows_run'].append("Broker Reconciliation")
+
+                # Use enhanced clearing file for full pipeline if available
+                if workflows['full_pipeline'] and st.session_state.get('enhanced_clearing_file'):
+                    enhanced_file_path = st.session_state.enhanced_clearing_file
+                    if Path(enhanced_file_path).exists():
+                        with open(enhanced_file_path, 'rb') as f:
+                            clearing_file = io.BytesIO(f.read())
+                            clearing_file.name = Path(enhanced_file_path).name
+                        st.success("✓ Using enhanced clearing file (with Comms, Taxes, TD) for pipeline")
+            else:
+                st.warning("⚠️ Broker reconciliation completed with issues - check results")
+                results['workflows_run'].append("Broker Reconciliation (with issues)")
+        else:
+            results['workflows_skipped'].append("Broker Reconciliation (module not available)")
+    elif broker_files and not clearing_file:
+        results['workflows_skipped'].append("Broker Reconciliation (no clearing file)")
+
+    # 2. FULL PIPELINE (if Position + Clearing present)
+    if workflows['full_pipeline'] and position_file and clearing_file:
+        st.info("🚀 Running Full Pipeline...")
+
+        # Stage 1
+        if process_stage1(position_file, clearing_file, mapping_file, use_default_mapping,
+                         default_mapping, position_password, clearing_password, account_prefix):
+            results['workflows_run'].append("Stage 1: Strategy Processing")
+
+            # Stage 2
+            if process_stage2("Use built-in schema (default)", None, account_prefix):
+                results['workflows_run'].append("Stage 2: ACM Mapping")
+            else:
+                results['workflows_skipped'].append("Stage 2 (failed)")
+                results['success'] = False
+
+            # Deliverables
+            if NEW_FEATURES_AVAILABLE:
+                run_deliverables_calculation(usdinr_rate, account_prefix)
+                results['workflows_run'].append("Deliverables Calculation")
+
+            # Expiry Deliveries
+            if EXPIRY_DELIVERY_AVAILABLE:
+                run_expiry_delivery_generation(account_prefix)
+                results['workflows_run'].append("Expiry Delivery Reports")
+        else:
+            results['workflows_skipped'].append("Full Pipeline (Stage 1 failed)")
+            results['success'] = False
+
+    # 3. PMS RECONCILIATION (if Position + PMS present)
+    if workflows['pms_recon'] and position_file and pms_file:
+        st.info("🔄 Running PMS Reconciliation...")
+        if NEW_FEATURES_AVAILABLE:
+            run_pms_reconciliation(pms_file)
+            results['workflows_run'].append("PMS Position Reconciliation")
+        else:
+            results['workflows_skipped'].append("PMS Reconciliation (module not available)")
+    elif pms_file and not position_file:
+        results['workflows_skipped'].append("PMS Reconciliation (no position file)")
+
+    return results
+
+
 def main():
-    st.title("🎯 Enhanced Trade Processing Pipeline - Complete Edition")
-    st.markdown("### Comprehensive pipeline with strategy processing, deliverables, reconciliation, and expiry physical delivery")
+    st.title("🎯 Trade Processing Pipeline - Simplified")
+    st.markdown("### Upload any combination of files - system runs what it can")
 
     # Initialize price manager on first load
     if SIMPLE_PRICE_MANAGER_AVAILABLE and 'prices_initialized' not in st.session_state:
-        with st.spinner("Initializing price data..."):
+        with st.spinner("Loading prices from default_stocks.csv..."):
             pm = get_price_manager()
-
-            # Load default stocks
             if pm.load_default_stocks():
                 st.session_state.prices_initialized = True
                 st.session_state.price_manager = pm
+                logger.info(f"✓ Loaded prices: {pm.price_source}")
             else:
-                st.error("Failed to load default stocks file")
+                st.warning("Could not load default_stocks.csv - prices will need to be uploaded")
                 st.session_state.prices_initialized = False
-    
-    # Initialize session state
-    if 'stage1_complete' not in st.session_state:
-        st.session_state.stage1_complete = False
-    if 'stage2_complete' not in st.session_state:
-        st.session_state.stage2_complete = False
-    if 'stage1_outputs' not in st.session_state:
-        st.session_state.stage1_outputs = {}
-    if 'stage2_outputs' not in st.session_state:
-        st.session_state.stage2_outputs = {}
-    if 'dataframes' not in st.session_state:
-        st.session_state.dataframes = {}
-    if 'acm_mapper' not in st.session_state:
-        st.session_state.acm_mapper = None
-    if 'deliverables_complete' not in st.session_state:
-        st.session_state.deliverables_complete = False
-    if 'recon_complete' not in st.session_state:
-        st.session_state.recon_complete = False
-    if 'deliverables_data' not in st.session_state:
-        st.session_state.deliverables_data = {}
-    if 'recon_data' not in st.session_state:
-        st.session_state.recon_data = {}
-    if 'expiry_deliveries_complete' not in st.session_state:
-        st.session_state.expiry_deliveries_complete = False
-    if 'expiry_delivery_files' not in st.session_state:
-        st.session_state.expiry_delivery_files = {}
-    if 'expiry_delivery_results' not in st.session_state:
-        st.session_state.expiry_delivery_results = {}
 
-    # Cache for sticky file behavior
-    if 'cached_position_file' not in st.session_state:
-        st.session_state.cached_position_file = None
-    if 'cached_mapping_file' not in st.session_state:
-        st.session_state.cached_mapping_file = None
-    if 'cached_position_password' not in st.session_state:
-        st.session_state.cached_position_password = None
+    # Initialize session state using utility function
+    initialize_session_state()
 
-    # Account validation state
+    # Initialize account validator
     if 'account_validator' not in st.session_state:
         st.session_state.account_validator = AccountValidator() if ACCOUNT_VALIDATION_AVAILABLE else None
-    if 'detected_account' not in st.session_state:
-        st.session_state.detected_account = None
-    if 'account_validated' not in st.session_state:
-        st.session_state.account_validated = False
-
-    # Processing mode state
-    if 'processing_mode' not in st.session_state:
-        st.session_state.processing_mode = 'EOD'
-    if 'broker_recon_complete' not in st.session_state:
-        st.session_state.broker_recon_complete = False
-    if 'enhanced_clearing_file' not in st.session_state:
-        st.session_state.enhanced_clearing_file = None
-    if 'final_enhanced_clearing_file' not in st.session_state:
-        st.session_state.final_enhanced_clearing_file = None
-    if 'broker_recon_result' not in st.session_state:
-        st.session_state.broker_recon_result = None
 
     # Sidebar
     with st.sidebar:
-        st.header("⚙️ Processing Mode")
+        st.header("📂 Upload Files")
+        st.markdown("*Upload any combination - system will auto-detect what to run*")
 
-        # Mode selector
-        processing_mode = st.radio(
-            "Select mode:",
-            ["EOD (with broker reconciliation)", "Intraday (direct trades)"],
-            index=0 if st.session_state.processing_mode == 'EOD' else 1,
-            help="**EOD**: Full reconciliation with executing broker files (includes Comms/Taxes)\n\n**Intraday**: Quick processing with clearing file only (no Comms/Taxes)"
-        )
-
-        # Update session state
-        st.session_state.processing_mode = 'EOD' if 'EOD' in processing_mode else 'Intraday'
-
-        # Show mode description
-        if st.session_state.processing_mode == 'EOD':
-            st.info("📊 **EOD Mode**: Reconciles clearing with executing broker files. Outputs include commission and tax data.")
-        else:
-            st.info("⚡ **Intraday Mode**: Fast processing without broker reconciliation. No commission/tax data.")
-
-        st.divider()
-        st.header("📂 Input Files")
-
-        # Display detected account (if any) at top of sidebar
-        if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.detected_account:
+        # Display detected account (if any)
+        if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.get('detected_account'):
             account = st.session_state.detected_account
             st.markdown(
                 f"""
@@ -202,12 +360,12 @@ def main():
                             border: 2px solid {account['display_color']};
                             border-radius: 8px;
                             padding: 12px;
-                            margin-bottom: 20px;">
+                            margin-bottom: 15px;">
                     <div style="font-size: 24px; text-align: center;">{account['icon']}</div>
-                    <div style="font-weight: bold; font-size: 18px; text-align: center; color: {account['display_color']};">
+                    <div style="font-weight: bold; font-size: 16px; text-align: center; color: {account['display_color']};">
                         {account['name']}
                     </div>
-                    <div style="font-size: 12px; text-align: center; color: #666; margin-top: 4px;">
+                    <div style="font-size: 11px; text-align: center; color: #666; margin-top: 4px;">
                         CP: {account['cp_code']}
                     </div>
                 </div>
@@ -215,213 +373,162 @@ def main():
                 unsafe_allow_html=True
             )
 
-        st.divider()
-        
-        # Stage 1 Section
-        st.markdown("### Stage 1: Strategy Processing")
-        
+        # FILE UPLOADS - All Optional
         position_file = st.file_uploader(
-            "1. Position File",
+            "Position File (optional)",
             type=['xlsx', 'xls', 'csv'],
             key='position_file',
             help="BOD, Contract, or MS format"
         )
 
-        # Cache position file when uploaded
-        if position_file is not None:
-            st.session_state.cached_position_file = position_file
+        clearing_file = st.file_uploader(
+            "Clearing Trades File (optional)",
+            type=['xlsx', 'xls', 'csv'],
+            key='clearing_file',
+            help="Clearing broker trade file"
+        )
 
-        # Show cached file info if no new upload
-        if position_file is None and st.session_state.cached_position_file is not None:
-            st.info(f"✓ Using cached: {st.session_state.cached_position_file.name}")
-            position_file = st.session_state.cached_position_file
+        broker_files = st.file_uploader(
+            "Broker Trade Files (optional, multiple)",
+            type=['xlsx', 'xls', 'csv'],
+            accept_multiple_files=True,
+            key='broker_files',
+            help="Executing broker files (ICICI, Kotak, MS, etc.)"
+        )
 
-        # Password field for position file (collect BEFORE account detection)
-        position_password = None
-        position_file_encrypted = False
-        if position_file and ENCRYPTED_FILE_SUPPORT:
-            # For Excel files, always try known passwords first
-            if position_file.name.endswith(('.xlsx', '.xls')):
-                # Pass UploadedFile DIRECTLY - same as Stage 2 processing
-                position_file.seek(0)
-                auto_password = try_known_passwords(position_file)
-                position_file.seek(0)
+        pms_file = st.file_uploader(
+            "PMS Position File (optional)",
+            type=['xlsx', 'xls', 'csv'],
+            key='pms_file',
+            help="For PMS reconciliation"
+        )
 
-                if auto_password:
-                    # Known password worked! File was encrypted
-                    position_file_encrypted = True
-                    position_password = auto_password
-                    st.session_state.cached_position_password = auto_password
-                    st.success(f"✓ Decrypted position file automatically")
-                elif st.session_state.get('cached_position_password'):
-                    # Use cached password from previous attempt
-                    position_file_encrypted = True
-                    position_password = st.session_state.cached_position_password
-                elif is_encrypted_excel(position_file):
-                    # File is encrypted but known passwords failed
-                    position_file_encrypted = True
-                    position_file.seek(0)
-                    # Prompt user for password
-                    position_password = st.text_input(
-                        "Position file password:",
-                        type="password",
-                        key="position_password",
-                        help="This file is encrypted. Known passwords failed, please enter password."
+        st.divider()
+
+        # PRICE MANAGEMENT
+        st.header("💰 Price Management")
+
+        if SIMPLE_PRICE_MANAGER_AVAILABLE and st.session_state.get('price_manager'):
+            pm = st.session_state.price_manager
+
+            if pm.price_source != "Not initialized":
+                st.info(f"📊 {pm.price_source}")
+
+                # Show missing symbols if any
+                if pm.missing_symbols:
+                    with st.expander(f"⚠️ {len(pm.missing_symbols)} Missing Prices", expanded=False):
+                        missing_df = pm.get_missing_symbols_report()
+                        if not missing_df.empty:
+                            st.dataframe(missing_df, use_container_width=True, height=150)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("📊 Fetch Yahoo", use_container_width=True, help="Refresh all prices from Yahoo Finance"):
+                    with st.spinner("Fetching..."):
+                        progress = st.progress(0)
+
+                        def update_progress(current, total):
+                            progress.progress(current / total)
+
+                        pm.fetch_all_prices_yahoo(update_progress)
+                        st.session_state.price_manager = pm
+                        st.success("✓ Prices updated")
+                        st.rerun()
+
+            with col2:
+                # Upload custom price file
+                price_file = st.file_uploader(
+                    "Or Upload",
+                    type=['csv', 'xlsx'],
+                    key="price_upload",
+                    help="Custom price file",
+                    label_visibility="collapsed"
+                )
+
+                if price_file:
+                    # Handle encryption for price file
+                    price_file, price_password, price_encrypted = handle_encrypted_file(price_file, "price_file")
+
+                    # Read the file
+                    if ENCRYPTED_FILE_SUPPORT and price_encrypted and price_password:
+                        success, price_df, error = read_csv_or_excel_with_password(price_file, price_password)
+                        if success:
+                            if pm.load_manual_prices(price_df):
+                                st.session_state.price_manager = pm
+                                st.success("✓ Custom prices loaded")
+                                st.rerun()
+                    else:
+                        try:
+                            if price_file.name.endswith('.csv'):
+                                price_df = pd.read_csv(price_file)
+                            else:
+                                price_df = pd.read_excel(price_file)
+
+                            if pm.load_manual_prices(price_df):
+                                st.session_state.price_manager = pm
+                                st.success("✓ Custom prices loaded")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+
+            # Download updated prices if Yahoo was used
+            if pm.price_source and "Yahoo Finance" in pm.price_source:
+                updated_csv = pm.get_updated_csv_dataframe()
+                if updated_csv is not None:
+                    csv_data = updated_csv.to_csv(index=False)
+                    st.download_button(
+                        label="💾 Save Updated Prices",
+                        data=csv_data,
+                        file_name="default_stocks_updated.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        help="Download to replace default_stocks.csv"
                     )
-                    if position_password:
-                        st.session_state.cached_position_password = position_password
 
-        # Detect account in position file (validator tries known passwords automatically)
-        if position_file is not None and ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
-            pos_account = st.session_state.account_validator.detect_account_in_position_file(position_file)
-            if pos_account:
-                st.session_state.detected_account = pos_account
+        st.divider()
 
-        # Conditional file uploaders based on mode
-        if st.session_state.processing_mode == 'Intraday':
-            # Intraday mode: Just clearing file
-            trade_file = st.file_uploader(
-                "2. Clearing Trade File",
-                type=['xlsx', 'xls', 'csv'],
-                key='trade_file',
-                help="Clearing broker trade file (MS format)"
-            )
-            broker_files = None
-        else:
-            # EOD mode: Clearing file + Broker files
-            clearing_file = st.file_uploader(
-                "2. Clearing Trade File",
-                type=['xlsx', 'xls', 'csv'],
-                key='clearing_file_eod',
-                help="Clearing broker trade file"
-            )
+        # SETTINGS
+        st.header("⚙️ Settings")
 
-            broker_files = st.file_uploader(
-                "3. Executing Broker Files",
-                type=['xlsx', 'xls', 'csv'],
-                accept_multiple_files=True,
-                key='broker_files',
-                help="One or more broker files (ICICI, Kotak, Morgan Stanley, etc.)"
-            )
-
-            # For consistency in later code, set trade_file to clearing_file in EOD mode
-            # (will be replaced with enhanced file after reconciliation)
-            trade_file = clearing_file
-
-        # Check if trade file is encrypted and get password if needed
-        trade_password = None
-        trade_file_encrypted = False
-
-        if trade_file and ENCRYPTED_FILE_SUPPORT:
-            # For Excel files, always try known passwords first
-            if trade_file.name.endswith(('.xlsx', '.xls')):
-                # Pass UploadedFile DIRECTLY - same as Stage 2 processing
-                trade_file.seek(0)
-                auto_password = try_known_passwords(trade_file)
-                trade_file.seek(0)
-
-                if auto_password:
-                    # Known password worked! File was encrypted
-                    trade_file_encrypted = True
-                    trade_password = auto_password
-                    st.session_state.cached_trade_password = auto_password
-                    st.success(f"✓ Decrypted trade file automatically")
-                elif st.session_state.get('cached_trade_password'):
-                    # Use cached password from previous attempt
-                    trade_file_encrypted = True
-                    trade_password = st.session_state.cached_trade_password
-                elif is_encrypted_excel(trade_file):
-                    # File is encrypted but known passwords failed
-                    trade_file_encrypted = True
-                    trade_file.seek(0)
-                    # Prompt user for password
-                    trade_password = st.text_input(
-                        "Trade file password:",
-                        type="password",
-                        key="trade_password",
-                        help="This file is encrypted. Known passwords failed, please enter password."
-                    )
-                    # Cache password for reuse during processing
-                    if trade_password:
-                        st.session_state.cached_trade_password = trade_password
-
-        # Detect account in trade file and validate (validator tries known passwords automatically)
-        if trade_file is not None and ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
-            trade_account = st.session_state.account_validator.detect_account_in_trade_file(trade_file)
-
-            # If position file account was detected, validate match
-            if st.session_state.account_validator.position_account or trade_account:
-                is_valid, status_type, message = st.session_state.account_validator.validate_account_match()
-
-                # Update detected account
-                if st.session_state.account_validator.get_account_info():
-                    st.session_state.detected_account = st.session_state.account_validator.get_account_info()
-
-                st.session_state.account_validated = is_valid
-
-                # Display validation message
-                if status_type == "success":
-                    st.success(message)
-                elif status_type == "warning":
-                    st.warning(message)
-                elif status_type == "error":
-                    st.error(message)
-        
-        # Mapping file numbering depends on mode
-        mapping_number = "3" if st.session_state.processing_mode == 'Intraday' else "4"
-        st.subheader(f"{mapping_number}. Mapping File")
+        # Mapping file
         default_mapping = None
-        
         mapping_locations = [
-            "futures_mapping.csv",
-            "futures mapping.csv",
-            "data/futures_mapping.csv",
-            "data/futures mapping.csv",
-            "./futures_mapping.csv",
-            "./data/futures_mapping.csv"
+            "futures_mapping.csv", "futures mapping.csv",
+            "data/futures_mapping.csv", "data/futures mapping.csv"
         ]
-        
+
         for location in mapping_locations:
             if Path(location).exists():
                 default_mapping = location
                 break
-        
+
         if default_mapping:
-            use_default_mapping = st.radio(
-                "Mapping source:",
-                ["Use default from repository", "Upload custom"],
-                index=0,
-                key="mapping_radio"
+            use_default_mapping = st.checkbox(
+                f"Use {Path(default_mapping).name}",
+                value=True,
+                key="use_default_mapping"
             )
-            
-            if use_default_mapping == "Upload custom":
+
+            if not use_default_mapping:
                 mapping_file = st.file_uploader(
-                    "Upload Mapping File",
+                    "Custom Mapping File",
                     type=['csv'],
                     key='mapping_file'
                 )
-                if mapping_file is not None:
-                    st.session_state.cached_mapping_file = mapping_file
-                elif st.session_state.cached_mapping_file is not None:
-                    st.info(f"✓ Using cached: {st.session_state.cached_mapping_file.name}")
-                    mapping_file = st.session_state.cached_mapping_file
             else:
                 mapping_file = None
-                st.success(f"✔ Using {Path(default_mapping).name}")
         else:
-            st.warning("Upload mapping file (required)")
+            st.warning("⚠️ No default mapping found")
             mapping_file = st.file_uploader(
                 "Upload Mapping File",
                 type=['csv'],
                 key='mapping_file',
-                help="CSV file with symbol-to-ticker mappings"
+                help="Required for processing"
             )
             use_default_mapping = None
-        
-        st.divider()
 
         # USD/INR Rate
-        st.markdown("### 💱 Exchange Rate")
         usdinr_rate = st.number_input(
             "USD/INR Rate",
             min_value=50.0,
@@ -433,391 +540,148 @@ def main():
 
         st.divider()
 
-        # Centralized Price Management (Single source of truth)
-        if SIMPLE_PRICE_MANAGER_AVAILABLE:
-            st.markdown("### 💰 Price Management")
+        # PROCESS BUTTON
+        st.header("🚀 Process")
 
-            # Initialize price manager if not exists
-            if 'price_manager' not in st.session_state:
-                pm = get_price_manager()
-                pm.load_default_stocks()  # Load symbol mappings
-                st.session_state.price_manager = pm
+        # Determine what can run
+        workflows = determine_workflows(position_file, clearing_file, broker_files, pms_file)
 
-            # Price status
-            pm = st.session_state.price_manager
-            if pm.price_source != "Not initialized":
-                st.info(f"Price Source: {pm.price_source}")
+        # Show what will run
+        if workflows['messages']:
+            for msg in workflows['messages']:
+                if msg.startswith("✅"):
+                    st.success(msg)
+                elif msg.startswith("⚠️"):
+                    st.warning(msg)
+                else:
+                    st.info(msg)
 
-                # Show missing symbols if any
-                if pm.missing_symbols:
-                    with st.expander(f"⚠️ {len(pm.missing_symbols)} Missing Symbols", expanded=False):
-                        missing_df = pm.get_missing_symbols_report()
-                        if not missing_df.empty:
-                            st.dataframe(missing_df, use_container_width=True)
+        # Process button
+        if st.button("⚡ Process Everything", type="primary", use_container_width=True,
+                    disabled=not workflows['can_process']):
 
-            col1, col2 = st.columns(2)
+            # Handle file encryption for all files
+            position_file, position_password, pos_encrypted = handle_encrypted_file(position_file, "position_file")
+            clearing_file, clearing_password, clear_encrypted = handle_encrypted_file(clearing_file, "clearing_file")
 
-            with col1:
-                if st.button("📊 Fetch Yahoo Prices", use_container_width=True):
-                    with st.spinner("Fetching prices from Yahoo Finance..."):
-                        progress = st.progress(0)
+            # Handle broker files encryption
+            if broker_files:
+                for i, broker_file in enumerate(broker_files):
+                    broker_files[i], _, _ = handle_encrypted_file(broker_file, f"broker_file_{i}")
 
-                        def update_progress(current, total):
-                            progress.progress(current / total)
-
-                        pm.fetch_all_prices_yahoo(update_progress)
-                        st.session_state.price_manager = pm
-                        st.success(f"✓ {pm.price_source}")
-                        st.rerun()
-
-            # Show download button if prices have been fetched
-            if pm.price_source and "Yahoo Finance" in pm.price_source:
-                updated_csv = pm.get_updated_csv_dataframe()
-                if updated_csv is not None:
-                    st.info("💾 Prices updated! Download CSV to save changes:")
-                    csv_data = updated_csv.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Updated default_stocks.csv",
-                        data=csv_data,
-                        file_name="default_stocks_updated.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                        help="Download this file and replace your default_stocks.csv to persist the updated prices"
-                    )
-
-            with col2:
-                price_file = st.file_uploader(
-                    "Or Upload Prices",
-                    type=['csv', 'xlsx'],
-                    key="price_upload",
-                    help="CSV/Excel with Symbol/Ticker and Price columns"
+            # Detect and validate accounts (skip if only Position + PMS)
+            if not (position_file and pms_file and not clearing_file and not broker_files):
+                detected_account, is_valid, validation_msg = detect_and_validate_accounts(
+                    position_file, position_password, clearing_file, clearing_password, broker_files
                 )
 
-                if price_file:
-                    # Check if file is encrypted
-                    price_password = None
-                    if ENCRYPTED_FILE_SUPPORT and price_file.name.endswith(('.xlsx', '.xls')):
-                        file_bytes = price_file.read()
-                        price_file.seek(0)
-                        if is_encrypted_excel(io.BytesIO(file_bytes)):
-                            price_password = st.text_input(
-                                "Price file password:",
-                                type="password",
-                                key="price_password",
-                                help="This file is encrypted. Please enter the password."
-                            )
+                st.session_state.detected_account = detected_account
+                st.session_state.account_validated = is_valid
 
-                    # Read the file (with decryption if needed)
-                    if ENCRYPTED_FILE_SUPPORT and price_password:
-                        success, price_df, error = read_csv_or_excel_with_password(price_file, price_password)
-                        if not success:
-                            st.error(f"Failed to read price file: {error}")
-                        else:
-                            if pm.load_manual_prices(price_df):
-                                st.session_state.price_manager = pm
-                                st.success(f"✓ {pm.price_source}")
-                                st.rerun()
-                            else:
-                                st.error("Failed to load price data")
-                    else:
-                        # Read normally
-                        try:
-                            if price_file.name.endswith('.csv'):
-                                price_df = pd.read_csv(price_file)
-                            else:
-                                price_df = pd.read_excel(price_file)
+                if validation_msg:
+                    status_type, message = validation_msg
+                    if status_type == "success":
+                        st.success(message)
+                    elif status_type == "warning":
+                        st.warning(message)
+                    elif status_type == "error":
+                        st.error(message)
+                        st.stop()  # Block processing on account mismatch
 
-                            if pm.load_manual_prices(price_df):
-                                st.session_state.price_manager = pm
-                                st.success(f"✓ {pm.price_source}")
-                                st.rerun()
-                            else:
-                                st.error("Failed to load price file")
-                        except Exception as e:
-                            st.error(f"Error reading price file: {str(e)}")
-        
-        # PMS Reconciliation option (only optional feature)
-        st.markdown("### 🔄 PMS Reconciliation (Optional)")
-        enable_recon = st.checkbox(
-            "Enable PMS Reconciliation",
-            value=False,
-            key="enable_recon",
-            help="Compare positions with PMS file"
-        )
-        
-        pms_file = None
-        if enable_recon:
-            pms_file = st.file_uploader(
-                "Upload PMS Position File",
-                type=['xlsx', 'xls', 'csv'],
-                key='pms_file'
+            # Run smart processing
+            results = smart_process_everything(
+                position_file, position_password, clearing_file, clearing_password,
+                broker_files, pms_file, mapping_file, use_default_mapping,
+                default_mapping, usdinr_rate
             )
 
-        st.divider()
-        
-        # Process buttons
-        # Check if we can process (files + account validation + broker recon for EOD)
-        base_files_ready = (
-            position_file is not None and
-            trade_file is not None and
-            (mapping_file is not None or (use_default_mapping == "Use default from repository" and default_mapping)) and
-            (not ACCOUNT_VALIDATION_AVAILABLE or st.session_state.get('account_validated', True))
-        )
-
-        # EOD mode requires broker reconciliation with 100% match
-        if st.session_state.processing_mode == 'EOD':
-            if broker_files and trade_file:
-                # Broker reconciliation button
-                st.markdown("### 🏦 Step 1: Broker Reconciliation (Required)")
-                if st.button("▶️ Run Broker Reconciliation", type="primary", use_container_width=True):
-                    account_prefix = ""
-                    if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
-                        account_prefix = st.session_state.account_validator.get_account_prefix()
-
-                    if BROKER_RECON_AVAILABLE:
-                        run_broker_reconciliation(trade_file, broker_files, mapping_file, account_prefix)
-                    else:
-                        st.error("Broker reconciliation module not available")
-
-                # Check if reconciliation is complete and 100%
-                if st.session_state.broker_recon_complete:
-                    recon_result = st.session_state.broker_recon_result
-                    if recon_result and recon_result.get('match_rate') == 100:
-                        st.success(f"✅ Broker reconciliation complete: {recon_result['match_rate']:.1f}% match")
-                        can_process_stage1 = base_files_ready
-                    else:
-                        match_rate = recon_result.get('match_rate', 0) if recon_result else 0
-                        st.error(f"⚠️ Reconciliation incomplete: {match_rate:.1f}% matched")
-                        st.warning("""
-                        **Options:**
-                        1. Fix your files and re-run reconciliation
-                        2. Switch to Intraday mode (won't have Comms/Taxes data)
-                        """)
-                        can_process_stage1 = False
-                else:
-                    st.info("👆 Run broker reconciliation first to proceed")
-                    can_process_stage1 = False
-            else:
-                st.warning("Upload clearing file and broker files to proceed")
-                can_process_stage1 = False
-        else:
-            # Intraday mode - no broker recon needed
-            can_process_stage1 = base_files_ready
-
-        can_process_stage2 = st.session_state.stage1_complete
-
-        st.markdown("### 📊 Stage Processing")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("🚀 Run Stage 1", type="primary", use_container_width=True, disabled=not can_process_stage1):
-                # Get account prefix
-                account_prefix = ""
-                if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
-                    account_prefix = st.session_state.account_validator.get_account_prefix()
-
-                # In EOD mode, use enhanced clearing file
-                trade_file_to_use = trade_file
-                if st.session_state.processing_mode == 'EOD' and st.session_state.broker_recon_complete:
-                    enhanced_file_path = st.session_state.enhanced_clearing_file
-                    if enhanced_file_path and Path(enhanced_file_path).exists():
-                        with open(enhanced_file_path, 'rb') as f:
-                            trade_file_to_use = io.BytesIO(f.read())
-                            trade_file_to_use.name = Path(enhanced_file_path).name
-                        st.info("Using enhanced clearing file (with Comms, Taxes, TD)")
-
-                process_stage1(position_file, trade_file_to_use, mapping_file, use_default_mapping, default_mapping,
-                             position_password, trade_password, account_prefix)
-        
-        with col2:
-            if st.button("🎯 Run Stage 2", type="secondary", use_container_width=True, disabled=not can_process_stage2):
-                process_stage2("Use built-in schema (default)", None)
-        
-        # Complete pipeline button
-        if can_process_stage1:
+            # Show results
             st.divider()
-            if st.button("⚡ Run Complete Enhanced Pipeline", type="primary", use_container_width=True):
-                # Get account prefix
-                account_prefix = ""
-                if ACCOUNT_VALIDATION_AVAILABLE and st.session_state.account_validator:
-                    account_prefix = st.session_state.account_validator.get_account_prefix()
+            if results['workflows_run']:
+                st.success(f"✅ Completed: {', '.join(results['workflows_run'])}")
 
-                # Step 1: Use enhanced file if in EOD mode and broker recon is complete
-                trade_file_to_use = trade_file
-                if st.session_state.processing_mode == 'EOD' and st.session_state.broker_recon_complete:
-                    recon_result = st.session_state.broker_recon_result
-                    if recon_result and recon_result.get('match_rate') == 100:
-                        enhanced_file_path = st.session_state.get('enhanced_clearing_file')
-                        if enhanced_file_path and Path(enhanced_file_path).exists():
-                            st.info("🎯 Using enhanced clearing file (with Comms, Taxes, TD) for all processing...")
+            if results['workflows_skipped']:
+                st.info(f"ℹ️ Skipped: {', '.join(results['workflows_skipped'])}")
 
-                            # Load enhanced clearing file
-                            with open(enhanced_file_path, 'rb') as f:
-                                trade_file_to_use = io.BytesIO(f.read())
-                                trade_file_to_use.name = Path(enhanced_file_path).name
+            if results['success'] and results['workflows_run']:
+                st.balloons()
 
-                # Step 2: Run Stage 1 (with enhanced file if available)
-                if process_stage1(position_file, trade_file_to_use, mapping_file, use_default_mapping, default_mapping,
-                                position_password, trade_password, account_prefix):
-                    # Run Stage 2
-                    process_stage2("Use built-in schema (default)", None, account_prefix)
-
-                    # Show success if using enhanced file
-                    if trade_file_to_use != trade_file:
-                        st.success("✅ ACM output now includes Trade Date, Brokerage & Taxes from broker reconciliation!")
-
-                    # Run deliverables (always enabled)
-                    run_deliverables_calculation(st.session_state.get('usdinr_rate', 88.0), account_prefix)
-
-                    # Run expiry deliveries (always enabled)
-                    if EXPIRY_DELIVERY_AVAILABLE:
-                        run_expiry_delivery_generation(account_prefix)
-
-                    # Run PMS recon if enabled
-                    if enable_recon and pms_file:
-                        run_pms_reconciliation(pms_file)
-
-                    st.success("✅ Complete enhanced pipeline finished!")
-                    st.balloons()
-        
-        # Separate button for expiry deliveries if Stage 1 is complete
-        if EXPIRY_DELIVERY_AVAILABLE and st.session_state.get('stage1_complete', False):
-            st.divider()
-            if st.button("📅 Regenerate Expiry Deliveries", type="secondary", use_container_width=True):
-                run_expiry_delivery_generation()
-
+        # Reset button
         st.divider()
-        if st.button("🔄 Reset All", type="secondary", use_container_width=True):
+        if st.button("🔄 Reset", type="secondary", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
-        # Email Settings
-        st.divider()
-        st.header("📧 Email Notifications")
-
-        # Check if email module is available
-        if not EMAIL_AVAILABLE:
-            st.warning("Email not available")
-            with st.expander("ℹ️ Setup Instructions"):
-                st.markdown("""
-                To enable email notifications:
-
-                ```bash
-                pip install sendgrid python-dotenv
-                ```
-
-                Then restart the Streamlit app.
-                """)
-        else:
-            # Check if email is configured from Streamlit secrets
-            try:
-                email_config = EmailConfig.from_streamlit_secrets()
-                email_configured = email_config.is_configured()
-            except:
-                email_configured = False
-
-        if EMAIL_AVAILABLE and email_configured:
-            st.success("✓ Email configured")
-            st.info("📧 Configure email reports in the **Email Reports** tab")
-        elif EMAIL_AVAILABLE and not email_configured:
-            st.warning("⚠️ Email not configured")
-            with st.expander("ℹ️ Setup Instructions"):
-                st.markdown("""
-                To enable email notifications, configure Streamlit secrets:
-
-                1. Create a `.streamlit/secrets.toml` file in your project directory
-                2. Add the following:
-
-                ```toml
-                SENDGRID_API_KEY = "your_api_key_here"
-                SENDGRID_FROM_EMAIL = "agovil@aurigincm.com"
-                SENDGRID_FROM_NAME = "Aurigin Trade Processing"
-                ```
-
-                3. Restart the Streamlit app
-
-                **For Streamlit Cloud:**
-                - Go to your app settings
-                - Navigate to "Secrets" section
-                - Add the same configuration in TOML format
-                """)
+        # Email info
+        if EMAIL_AVAILABLE:
+            st.divider()
+            st.caption("📧 Configure emails in Email Reports tab")
 
     # Main content tabs
-    tab_list = ["📊 Pipeline Overview", "🔄 Stage 1: Strategy", "📋 Stage 2: ACM"]
+    tab_list = ["📊 Overview", "🔄 Stage 1", "📋 Stage 2"]
 
-    # Add Positions by Underlying tab if we have positions
     if POSITION_GROUPER_AVAILABLE and 'stage1' in st.session_state.dataframes:
-        tab_list.append("📂 Positions by Underlying")
+        tab_list.append("📂 Positions")
 
-    # Always show deliverables and expiry deliveries tabs (always enabled)
-    if NEW_FEATURES_AVAILABLE and st.session_state.stage1_complete:
-        tab_list.append("💰 Deliverables & IV")
+    if NEW_FEATURES_AVAILABLE and st.session_state.get('stage1_complete'):
+        tab_list.append("💰 Deliverables")
 
-    if EXPIRY_DELIVERY_AVAILABLE and st.session_state.stage1_complete:
-        tab_list.append("📅 Expiry Deliveries")
+    if EXPIRY_DELIVERY_AVAILABLE and st.session_state.get('stage1_complete'):
+        tab_list.append("📅 Expiry")
 
-    # Only show PMS recon if enabled
-    if NEW_FEATURES_AVAILABLE and st.session_state.get('enable_recon', False):
-        tab_list.append("🔄 PMS Reconciliation")
+    if NEW_FEATURES_AVAILABLE and st.session_state.get('recon_complete'):
+        tab_list.append("🔄 PMS Recon")
 
-    # Show Broker Recon tab if reconciliation completed
-    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
-        tab_list.append("🏦 Broker Reconciliation")
+    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete'):
+        tab_list.append("🏦 Broker Recon")
 
-    # Show Email Reports tab if email is configured and stage1 is complete
-    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete', False):
-        tab_list.append("📧 Email Reports")
+    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete'):
+        tab_list.append("📧 Email")
 
-    tab_list.extend(["📥 Downloads", "📘 Schema Info"])
-    
+    tab_list.extend(["📥 Downloads", "📘 Schema"])
+
     tabs = st.tabs(tab_list)
-    
+
     tab_index = 0
     with tabs[tab_index]:
         display_pipeline_overview()
     tab_index += 1
-    
+
     with tabs[tab_index]:
         display_stage1_results()
     tab_index += 1
-    
+
     with tabs[tab_index]:
         display_stage2_results()
     tab_index += 1
 
-    # Positions by Underlying tab (if available)
     if POSITION_GROUPER_AVAILABLE and 'stage1' in st.session_state.dataframes:
         with tabs[tab_index]:
             display_positions_grouped()
         tab_index += 1
 
-    # Deliverables tab (always enabled)
-    if NEW_FEATURES_AVAILABLE and st.session_state.stage1_complete:
+    if NEW_FEATURES_AVAILABLE and st.session_state.get('stage1_complete'):
         with tabs[tab_index]:
             display_deliverables_tab()
         tab_index += 1
 
-    # Expiry Deliveries tab (always enabled)
-    if EXPIRY_DELIVERY_AVAILABLE and st.session_state.stage1_complete:
+    if EXPIRY_DELIVERY_AVAILABLE and st.session_state.get('stage1_complete'):
         with tabs[tab_index]:
             display_expiry_deliveries_tab()
         tab_index += 1
 
-    # Reconciliation tab (only if enabled)
-    if NEW_FEATURES_AVAILABLE and st.session_state.get('enable_recon', False):
+    if NEW_FEATURES_AVAILABLE and st.session_state.get('recon_complete'):
         with tabs[tab_index]:
             display_reconciliation_tab()
         tab_index += 1
 
-    # Broker Reconciliation tab (only if completed)
-    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete', False):
+    if BROKER_RECON_AVAILABLE and st.session_state.get('broker_recon_complete'):
         with tabs[tab_index]:
             display_broker_reconciliation_tab()
         tab_index += 1
 
-    # Email Reports tab (only if email available and stage1 complete)
-    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete', False):
+    if EMAIL_AVAILABLE and st.session_state.get('stage1_complete'):
         with tabs[tab_index]:
             display_email_reports_tab()
         tab_index += 1
@@ -825,17 +689,16 @@ def main():
     with tabs[tab_index]:
         display_downloads()
     tab_index += 1
-    
+
     with tabs[tab_index]:
         display_schema_info()
 
-# Processing Functions
 
 # Footer
 st.divider()
 st.markdown("""
 <div style='text-align: center; color: #666;'>
-    Enhanced Trade Processing Pipeline v4.0 | Refactored & Modular
+    Trade Processing Pipeline v5.0 | Simplified & Flexible
 </div>
 """, unsafe_allow_html=True)
 
