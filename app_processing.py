@@ -616,7 +616,12 @@ def run_pms_reconciliation(pms_file, position_file=None, position_password=None,
                 starting_positions = stage1_data.get('starting_positions', pd.DataFrame())
                 final_positions = stage1_data.get('final_positions', pd.DataFrame())
 
-                output_file = get_output_path(f"PMS_RECONCILIATION_{timestamp}.xlsx")
+                # Get account prefix if available
+                account_prefix = ""
+                if st.session_state.get('account_validator'):
+                    account_prefix = st.session_state.account_validator.get_account_prefix()
+
+                output_file = get_output_path(f"{account_prefix}PMS_RECONCILIATION_{timestamp}.xlsx")
 
                 recon.create_comprehensive_recon_report(
                     starting_positions,
@@ -693,8 +698,13 @@ def run_pms_reconciliation(pms_file, position_file=None, position_password=None,
                 position_manager = PositionManager()
                 current_positions_df = position_manager.initialize_from_positions(positions)
 
+                # Get account prefix if available
+                account_prefix = ""
+                if st.session_state.get('account_validator'):
+                    account_prefix = st.session_state.account_validator.get_account_prefix()
+
                 # Run simple reconciliation
-                output_file = get_output_path(f"PMS_POSITION_RECONCILIATION_{timestamp}.xlsx")
+                output_file = get_output_path(f"{account_prefix}PMS_POSITION_RECONCILIATION_{timestamp}.xlsx")
 
                 # Single reconciliation (treat as pre-trade)
                 position_recon = recon.reconcile_positions(current_positions_df, pms_df, "Current")
