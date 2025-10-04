@@ -146,57 +146,126 @@ def initialize_session_state():
 
 
 def apply_custom_css():
-    """Apply custom CSS styling to the app"""
+    """Apply custom CSS styling to the app - Compact Version"""
     st.markdown("""
         <style>
-        .main { padding: 0rem 1rem; }
-        h1 { color: #1f77b4; }
+        /* Reduce overall padding and margins */
+        .main {
+            padding: 0.5rem 1rem 0rem 1rem;
+        }
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+        }
+
+        /* Compact headers */
+        h1 {
+            color: #1f77b4;
+            font-size: 1.8rem !important;
+            margin-top: 0rem !important;
+            margin-bottom: 0.3rem !important;
+            padding-top: 0rem !important;
+        }
+        h2 {
+            font-size: 1.3rem !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.3rem !important;
+        }
+        h3 {
+            font-size: 1.1rem !important;
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.2rem !important;
+        }
+
+        /* Compact sidebar */
+        section[data-testid="stSidebar"] {
+            padding-top: 1rem !important;
+        }
+        section[data-testid="stSidebar"] > div {
+            padding-top: 1rem !important;
+        }
+        section[data-testid="stSidebar"] h2 {
+            font-size: 1rem !important;
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.3rem !important;
+        }
+
+        /* Compact file uploaders */
+        .stFileUploader {
+            padding: 0.3rem 0 !important;
+        }
+        .stFileUploader label {
+            font-size: 0.85rem !important;
+            margin-bottom: 0.2rem !important;
+        }
+
+        /* Compact buttons */
+        .stButton button {
+            padding: 0.4rem 0.8rem !important;
+            font-size: 0.85rem !important;
+        }
+
+        /* Compact text */
+        p, .stMarkdown {
+            font-size: 0.9rem !important;
+            margin-bottom: 0.3rem !important;
+        }
+        .stCaption {
+            font-size: 0.75rem !important;
+        }
+
+        /* Compact dividers */
+        hr {
+            margin: 0.5rem 0 !important;
+        }
+
+        /* Compact metrics */
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
+
+        /* Compact expanders */
+        .streamlit-expanderHeader {
+            font-size: 0.9rem !important;
+            padding: 0.3rem 0.5rem !important;
+        }
+
+        /* Other elements */
         .stDownloadButton button {
             width: 100%;
             background-color: #4CAF50;
             color: white;
+            padding: 0.4rem 0.8rem !important;
+            font-size: 0.85rem !important;
         }
         .stage-header {
             background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
+            padding: 6px;
+            border-radius: 4px;
+            margin: 5px 0;
+            font-size: 0.9rem;
+        }
+        .warning-box, .success-box, .info-box {
+            border-radius: 4px;
+            padding: 6px;
+            margin: 5px 0;
+            font-size: 0.85rem;
         }
         .warning-box {
             background-color: #fff3cd;
             border: 1px solid #ffc107;
-            border-radius: 4px;
-            padding: 10px;
-            margin: 10px 0;
         }
         .success-box {
             background-color: #d4edda;
             border: 1px solid #c3e6cb;
-            border-radius: 4px;
-            padding: 10px;
-            margin: 10px 0;
         }
         .info-box {
             background-color: #d1ecf1;
             border: 1px solid #bee5eb;
-            border-radius: 4px;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        .expiry-card {
-            background-color: #f8f9fa;
-            border: 2px solid #007bff;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-        }
-        .deliverable-header {
-            background-color: #007bff;
-            color: white;
-            padding: 8px;
-            border-radius: 4px;
-            margin: 5px 0;
         }
         </style>
         """, unsafe_allow_html=True)
