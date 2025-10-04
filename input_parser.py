@@ -475,10 +475,15 @@ class InputParser:
             contract_id = contract_id.strip()
             if contract_id.endswith(' -0'):
                 contract_id = contract_id[:-3]
-            
+
+            # Fix missing hyphens: detect symbol directly followed by date (NIFTY26SEP → NIFTY-26SEP)
+            # Pattern: letter followed by digit, insert hyphen between them
+            # This handles cases where MS forgets the hyphen between symbol and expiry date
+            contract_id = re.sub(r'([A-Z])(\d)', r'\1-\2', contract_id)
+
             parts = contract_id.split('-')
             parts = [p.strip() for p in parts]
-            
+
             if len(parts) < 5:
                 return None
             
