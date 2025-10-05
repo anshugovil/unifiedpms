@@ -24,56 +24,60 @@ MONTH_CODE = {
     7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z"
 }
 
-# Special index ticker mappings - UPDATED WITH MIDCPNIFTY
+# Special index ticker mappings - Hardcoded logic for indices (do NOT use mapping file)
 INDEX_TICKER_RULES = {
     'NIFTY': {
         'futures_ticker': 'NZ',
         'options_ticker': 'NIFTY',
+        'underlying': 'NIFTY INDEX',
         'is_index': True
     },
     'NZ': {
         'futures_ticker': 'NZ',
         'options_ticker': 'NIFTY',
+        'underlying': 'NIFTY INDEX',
         'is_index': True
     },
     'BANKNIFTY': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
-        'is_index': True
-    },
-    'AF1': {
-        'futures_ticker': 'AF1',
-        'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'AF': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'NSEBANK': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'MIDCPNIFTY': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'RNS': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'NMIDSELP': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'MCN': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     }
 }
@@ -652,7 +656,7 @@ class InputParser:
                 is_index = True
         
         # Also check ticker itself - UPDATED WITH NEW TICKERS
-        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF1', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
+        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
             is_index = True
         
         if security_type == 'Futures':

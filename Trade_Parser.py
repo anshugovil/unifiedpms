@@ -48,56 +48,60 @@ MONTH_CODE = {
     7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z"
 }
 
-# Special index ticker mappings - UPDATED WITH MIDCPNIFTY
+# Special index ticker mappings - Hardcoded logic for indices (do NOT use mapping file)
 INDEX_TICKER_RULES = {
     'NIFTY': {
         'futures_ticker': 'NZ',
         'options_ticker': 'NIFTY',
+        'underlying': 'NIFTY INDEX',
         'is_index': True
     },
     'NZ': {
         'futures_ticker': 'NZ',
         'options_ticker': 'NIFTY',
+        'underlying': 'NIFTY INDEX',
         'is_index': True
     },
     'BANKNIFTY': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
-        'is_index': True
-    },
-    'AF1': {
-        'futures_ticker': 'AF1',
-        'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'AF': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'NSEBANK': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'MIDCPNIFTY': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'RNS': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'NMIDSELP': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     },
     'MCN': {
         'futures_ticker': 'RNS',
         'options_ticker': 'NMIDSELP',
+        'underlying': 'NMIDSELP INDEX',
         'is_index': True
     }
 }
@@ -163,25 +167,30 @@ class TradeParser:
         return mappings
     
     def _get_index_ticker(self, symbol: str, security_type: str) -> Optional[Dict]:
-        """Get special ticker mapping for index futures vs options"""
+        """
+        Get special ticker mapping for index futures vs options
+        Returns None if no special rule applies
+        """
         symbol_upper = symbol.upper()
-        
+
+        # Check if this symbol has special index rules
         if symbol_upper in INDEX_TICKER_RULES:
             rule = INDEX_TICKER_RULES[symbol_upper]
-            
+
+            # Return appropriate ticker based on security type
             if security_type == 'Futures':
                 return {
                     'ticker': rule['futures_ticker'],
                     'underlying': rule.get('underlying', f"{symbol_upper} INDEX"),
-                    'lot_size': 50 if 'NIFTY' in symbol_upper else 15
+                    'lot_size': 50 if 'NIFTY' in symbol_upper else 15  # Default lot sizes
                 }
-            else:  # Options
+            else:  # Options (Call or Put)
                 return {
                     'ticker': rule['options_ticker'],
                     'underlying': rule.get('underlying', f"{symbol_upper} INDEX"),
                     'lot_size': 50 if 'NIFTY' in symbol_upper else 15
                 }
-        
+
         return None
     
     def detect_format(self, df: pd.DataFrame) -> str:
@@ -448,33 +457,34 @@ class TradeParser:
             return None
     
     def _generate_bloomberg_ticker(self, ticker: str, expiry: datetime,
-                                  security_type: str, strike: float,
-                                  series: str = None) -> str:
-        """Generate Bloomberg ticker format"""
+                                  security_type: str, strike: float, series: str = None) -> str:
+        """Generate Bloomberg ticker - MATCHING INPUT PARSER EXACTLY"""
         ticker_upper = ticker.upper()
-        
-        # Check if index - UPDATED WITH NEW TICKERS
+
+        # Check if this is an index based on ticker or series
         is_index = False
         if series:
             series_upper = series.upper()
-            if 'IDX' in series_upper:
+            if 'IDX' in series_upper:  # FUTIDX, OPTIDX
                 is_index = True
-        
-        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF1', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
+
+        # Also check ticker itself - UPDATED WITH NEW TICKERS
+        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
             is_index = True
-        
+
         if security_type == 'Futures':
             month_code = MONTH_CODE.get(expiry.month, "")
             year_code = str(expiry.year)[-1]
-            
+
             if is_index:
                 return f"{ticker}{month_code}{year_code} Index"
             else:
                 return f"{ticker}={month_code}{year_code} IS Equity"
         else:
+            # Options format
             date_str = expiry.strftime('%m/%d/%y')
             strike_str = str(int(strike)) if strike == int(strike) else str(strike)
-            
+
             if is_index:
                 if security_type == 'Call':
                     return f"{ticker} {date_str} C{strike_str} Index"
