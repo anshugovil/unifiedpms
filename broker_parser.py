@@ -66,16 +66,15 @@ MONTH_CODE = {
 
 # Special index ticker mappings
 INDEX_TICKER_RULES = {
-    'NIFTY': {'futures_ticker': 'NZ', 'options_ticker': 'NIFTY', 'is_index': True},
-    'NZ': {'futures_ticker': 'NZ', 'options_ticker': 'NIFTY', 'is_index': True},
-    'BANKNIFTY': {'futures_ticker': 'AF1', 'options_ticker': 'NSEBANK', 'is_index': True},
-    'AF1': {'futures_ticker': 'AF1', 'options_ticker': 'NSEBANK', 'is_index': True},
-    'AF': {'futures_ticker': 'AF1', 'options_ticker': 'NSEBANK', 'is_index': True},
-    'NSEBANK': {'futures_ticker': 'AF1', 'options_ticker': 'NSEBANK', 'is_index': True},
-    'MIDCPNIFTY': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'is_index': True},
-    'RNS': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'is_index': True},
-    'NMIDSELP': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'is_index': True},
-    'MCN': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'is_index': True}
+    'NIFTY': {'futures_ticker': 'NZ', 'options_ticker': 'NIFTY', 'underlying': 'NIFTY INDEX', 'is_index': True},
+    'NZ': {'futures_ticker': 'NZ', 'options_ticker': 'NIFTY', 'underlying': 'NIFTY INDEX', 'is_index': True},
+    'BANKNIFTY': {'futures_ticker': 'AF', 'options_ticker': 'NSEBANK', 'underlying': 'NSEBANK INDEX', 'is_index': True},
+    'AF': {'futures_ticker': 'AF', 'options_ticker': 'NSEBANK', 'underlying': 'NSEBANK INDEX', 'is_index': True},
+    'NSEBANK': {'futures_ticker': 'AF', 'options_ticker': 'NSEBANK', 'underlying': 'NSEBANK INDEX', 'is_index': True},
+    'MIDCPNIFTY': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'underlying': 'NMIDSELP INDEX', 'is_index': True},
+    'RNS': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'underlying': 'NMIDSELP INDEX', 'is_index': True},
+    'NMIDSELP': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'underlying': 'NMIDSELP INDEX', 'is_index': True},
+    'MCN': {'futures_ticker': 'RNS', 'options_ticker': 'NMIDSELP', 'underlying': 'NMIDSELP INDEX', 'is_index': True}
 }
 
 
@@ -154,9 +153,39 @@ class BrokerParserBase:
         except Exception as e:
             logger.error(f"Error loading futures mapping: {e}")
 
-    def _get_ticker_for_symbol(self, symbol: str) -> Optional[str]:
+    def _get_index_ticker(self, symbol: str, security_type: str) -> Optional[dict]:
+        """
+        Get special ticker mapping for index futures vs options
+        Returns None if no special rule applies
+        """
+        symbol_upper = symbol.upper()
+
+        # Check if this symbol has special index rules
+        if symbol_upper in INDEX_TICKER_RULES:
+            rule = INDEX_TICKER_RULES[symbol_upper]
+
+            # Return appropriate ticker based on security type
+            if security_type == 'Futures':
+                return {
+                    'ticker': rule['futures_ticker'],
+                    'underlying': rule.get('underlying', f"{symbol_upper} INDEX")
+                }
+            else:  # Options (Call or Put)
+                return {
+                    'ticker': rule['options_ticker'],
+                    'underlying': rule.get('underlying', f"{symbol_upper} INDEX")
+                }
+
+        return None
+
+    def _get_ticker_for_symbol(self, symbol: str, security_type: str = 'Futures') -> Optional[str]:
         """Get ticker for a given symbol"""
         symbol_upper = str(symbol).strip().upper()
+
+        # Check special index rules first
+        index_mapping = self._get_index_ticker(symbol_upper, security_type)
+        if index_mapping:
+            return index_mapping['ticker']
 
         # Check direct mapping
         if symbol_upper in self.symbol_to_ticker:
@@ -178,7 +207,7 @@ class BrokerParserBase:
             if 'IDX' in instrument_upper or 'INDEX' in instrument_upper:
                 is_index = True
 
-        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF1', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
+        if ticker_upper in ['NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'AF', 'NSEBANK', 'RNS', 'NMIDSELP', 'MCN', 'MIDCPNIFTY'] or 'NIFTY' in ticker_upper:
             is_index = True
 
         # Generate ticker based on security type
@@ -293,7 +322,7 @@ class IciciParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(scrip_code)
+                    ticker = self._get_ticker_for_symbol(scrip_code, security_type)
                     if not ticker:
                         logger.warning(f"No ticker found for symbol: {scrip_code}")
                         continue
@@ -490,7 +519,7 @@ class KotakParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol
 
@@ -615,7 +644,7 @@ class KotakParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol  # Use symbol as ticker if not found
 
@@ -764,7 +793,7 @@ class IIFLParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol  # Use symbol as ticker if not found
 
@@ -914,7 +943,7 @@ class AxisParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol  # Use symbol as ticker if not found
 
@@ -1105,7 +1134,7 @@ class EquirusParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(scrip_code)
+                    ticker = self._get_ticker_for_symbol(scrip_code, security_type)
                     if not ticker:
                         ticker = scrip_code  # Use scrip code as ticker if not found
 
@@ -1263,7 +1292,7 @@ class EdelweissParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol  # Use symbol as ticker if not found
 
@@ -1485,7 +1514,7 @@ class MorganStanleyParser(BrokerParserBase):
                     symbol = str(row['Symbol']).strip().upper()
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
                     if not ticker:
                         ticker = symbol  # Use symbol as ticker if not found
 
@@ -1721,7 +1750,7 @@ class AntiqueParser(BrokerParserBase):
                         continue
 
                     # Get ticker for symbol
-                    ticker = self._get_ticker_for_symbol(scrip_code)
+                    ticker = self._get_ticker_for_symbol(scrip_code, security_type)
                     if not ticker:
                         ticker = scrip_code  # Use scrip code as ticker if not found
 

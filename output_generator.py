@@ -494,7 +494,7 @@ class OutputGenerator:
         # Common index mappings
         index_map = {
             'NIFTY': 'NZ',
-            'BANKNIFTY': 'AF1',
+            'BANKNIFTY': 'AF',
             'FINNIFTY': 'FINNIFTY',
             'MIDCPNIFTY': 'RNS'
         }

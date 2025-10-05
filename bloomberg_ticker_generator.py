@@ -27,23 +27,21 @@ INDEX_TICKER_RULES = {
         'is_index': True
     },
     'BANKNIFTY': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
-        'is_index': True
-    },
-    'AF1': {
-        'futures_ticker': 'AF1',
-        'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'AF': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'NSEBANK': {
-        'futures_ticker': 'AF1',
+        'futures_ticker': 'AF',
         'options_ticker': 'NSEBANK',
+        'underlying': 'NSEBANK INDEX',
         'is_index': True
     },
     'FINNIFTY': {
@@ -80,8 +78,8 @@ INDEX_TICKER_RULES = {
 
 # Known index tickers (for detection)
 INDEX_TICKERS = {
-    'NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'NF', 'NBF', 'FNF', 'FINNIFTY', 
-    'MCN', 'MIDCPNIFTY', 'AF', 'AF1', 'NSEBANK', 'RNS', 'NMIDSELP'
+    'NZ', 'NBZ', 'NIFTY', 'BANKNIFTY', 'NF', 'NBF', 'FNF', 'FINNIFTY',
+    'MCN', 'MIDCPNIFTY', 'AF', 'NSEBANK', 'RNS', 'NMIDSELP'
 }
 
 

@@ -304,7 +304,7 @@ class ExpiryDeliveryGenerator:
         if pd.isna(ticker):
             return False
         ticker_upper = str(ticker).upper()
-        return 'INDEX' in ticker_upper or any(idx in ticker_upper for idx in ['NIFTY', 'NZ', 'AF1', 'NSEBANK', 'RNS', 'NMIDSELP'])
+        return 'INDEX' in ticker_upper or any(idx in ticker_upper for idx in ['NIFTY', 'NZ', 'AF', 'NSEBANK', 'RNS', 'NMIDSELP'])
     
     def _process_futures(self, row: pd.Series, last_price: float, expiry_date_str: str) -> Tuple[Dict, Optional[Dict]]:
         """Process futures position at expiry"""

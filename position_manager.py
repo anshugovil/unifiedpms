@@ -85,8 +85,7 @@ class PriceFetcher:
             'BNF': '^NSEBANK',
             'BANKN': '^NSEBANK',
             'NSEBANK': '^NSEBANK',
-            'AF1': '^NSEBANK',  # Bloomberg ticker for BANKNIFTY
-            'AF': '^NSEBANK',
+            'AF': '^NSEBANK',  # Bloomberg ticker for BANKNIFTY
             'FINNIFTY': '^CNXFIN',
             'FNF': '^CNXFIN',
             'FINNNIFTY': '^CNXFIN',
