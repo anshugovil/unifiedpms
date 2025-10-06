@@ -593,11 +593,11 @@ class TradeReconciler:
                         broker_matches['lots'].abs() == clear_lots
                     ]
 
-            # Check price tolerance (0.001%)
+            # Check price tolerance (absolute difference)
             if len(broker_matches) > 0:
-                price_tolerance = 0.00001  # 0.001%
+                price_tolerance = 0.0005  # Absolute price difference
                 broker_matches = broker_matches[
-                    (broker_matches['price'] - clear_row['price']).abs() / clear_row['price'] < price_tolerance
+                    (broker_matches['price'] - clear_row['price']).abs() < price_tolerance
                 ]
 
             # If match found, use first match
@@ -756,10 +756,10 @@ class TradeReconciler:
                     return "; ".join(reasons)
                 qty_matches = lots_matches  # Continue with lots-matched trades
 
-        # Check price tolerance
-        price_tolerance = 0.00001
+        # Check price tolerance (absolute difference)
+        price_tolerance = 0.0005
         price_matches = qty_matches[
-            (qty_matches['price'] - clear_row['price']).abs() / clear_row['price'] < price_tolerance
+            (qty_matches['price'] - clear_row['price']).abs() < price_tolerance
         ]
         if len(price_matches) == 0:
             broker_prices = qty_matches['price'].tolist()
@@ -813,10 +813,10 @@ class TradeReconciler:
                     return "; ".join(reasons)
                 qty_matches = lots_matches  # Continue with lots-matched trades
 
-        # Check price tolerance
-        price_tolerance = 0.00001
+        # Check price tolerance (absolute difference)
+        price_tolerance = 0.0005
         price_matches = qty_matches[
-            (qty_matches['price'] - broker_row['price']).abs() / broker_row['price'] < price_tolerance
+            (qty_matches['price'] - broker_row['price']).abs() < price_tolerance
         ]
         if len(price_matches) == 0:
             clearing_prices = qty_matches['price'].tolist()

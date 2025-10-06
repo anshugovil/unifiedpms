@@ -1642,6 +1642,195 @@ class MorganStanleyParser(BrokerParserBase):
             return pd.DataFrame()
 
 
+class NuvamaParser(BrokerParserBase):
+    """Parser for Nuvama Securities files (handles combined scrip format)"""
+
+    def _extract_symbol_from_scrip(self, scrip: str) -> str:
+        """
+        Extract base symbol from NUVAMA scrip.
+        If scrip is already just a symbol (like 'MARUTI'), return as-is.
+        Otherwise extract from combined format (like 'MARUTI25OCTFUT' -> 'MARUTI').
+        """
+        import re
+        scrip = str(scrip).strip().upper()
+
+        # Check if scrip contains YY+MMM pattern (like 25OCT, 25NOV, etc)
+        # If it doesn't, assume it's already a clean symbol
+        if not re.search(r'\d{2}[A-Z]{3}', scrip):
+            return scrip
+
+        # Extract symbol from combined format: Symbol + YYMMMFUT/CE/PE
+        # Match everything before the YY + MMM pattern
+        match = re.match(r'([A-Z]+?)(\d{2}[A-Z]{3})', scrip)
+        if match:
+            return match.group(1)
+
+        # Fallback: return original scrip
+        return scrip
+
+    def _parse_expiry_date(self, expiry_value) -> Optional[datetime]:
+        """Parse expiry date from various formats"""
+        if isinstance(expiry_value, (datetime, pd.Timestamp)):
+            return expiry_value.to_pydatetime() if isinstance(expiry_value, pd.Timestamp) else expiry_value
+
+        try:
+            expiry_str = str(expiry_value).strip()
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d/%m/%Y', '%d/%m/%y', '%d-%m-%Y', '%d-%m-%y', '%d-%b-%y', '%d-%b-%Y']:
+                try:
+                    return datetime.strptime(expiry_str, fmt)
+                except:
+                    continue
+            logger.warning(f"Could not parse expiry date: {expiry_value}")
+            return None
+        except:
+            logger.warning(f"Could not parse expiry date: {expiry_value}")
+            return None
+
+    def parse_file(self, file_obj) -> pd.DataFrame:
+        """Parse Nuvama broker file"""
+        try:
+            # Try to decrypt if password-protected
+            file_obj.seek(0)
+            decrypted_file = decrypt_excel_file(file_obj)
+            if decrypted_file:
+                file_obj = decrypted_file
+
+            # Read Excel file
+            df = pd.read_excel(file_obj)
+
+            logger.info(f"Read Nuvama file with {len(df)} rows")
+
+            # Expected columns
+            required_cols = ['CP Code', 'Buy/Sell', 'Qty', 'Instrument', 'Scrip', 'OptType',
+                           'Expiry', 'Mkt. Price', 'Brokerage', 'GST', 'STT', 'Trade Date']
+
+            # Check if required columns exist
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                logger.error(f"Missing columns in Nuvama file: {missing_cols}")
+                return pd.DataFrame()
+
+            # Process each row
+            parsed_rows = []
+
+            for idx, row in df.iterrows():
+                try:
+                    # Get scrip and extract base symbol
+                    scrip = str(row['Scrip']).strip().upper()
+                    symbol = self._extract_symbol_from_scrip(scrip)
+
+                    # Get instrument (already in correct format: FUTSTK/OPTSTK/FUTIDX/OPTIDX)
+                    instrument = str(row['Instrument']).strip().upper()
+
+                    # Get option type (handle NaN for futures)
+                    option_type_val = row['OptType']
+                    if pd.isna(option_type_val):
+                        option_type = ''
+                    else:
+                        option_type = str(option_type_val).strip().upper()
+
+                    # Determine security type
+                    if option_type in ['FF', '', 'NAN']:
+                        # Futures (FF or empty/NaN)
+                        security_type = 'Futures'
+                        strike = 0
+                    elif option_type == 'CE':
+                        # Call option
+                        security_type = 'Call'
+                        strike = float(row['Strike']) if pd.notna(row['Strike']) else 0
+                    elif option_type == 'PE':
+                        # Put option
+                        security_type = 'Put'
+                        strike = float(row['Strike']) if pd.notna(row['Strike']) else 0
+                    else:
+                        logger.warning(f"Unknown option type: {option_type} at row {idx}")
+                        continue
+
+                    # Get ticker for symbol (using extracted base symbol)
+                    ticker = self._get_ticker_for_symbol(symbol, security_type)
+                    if not ticker:
+                        ticker = symbol  # Use symbol as ticker if not found
+
+                    # Parse expiry date
+                    expiry = self._parse_expiry_date(row['Expiry'])
+                    if not expiry:
+                        logger.warning(f"Could not parse expiry at row {idx}")
+                        continue
+
+                    # Generate Bloomberg ticker
+                    bloomberg_ticker = self._generate_bloomberg_ticker(
+                        ticker, expiry, security_type, strike, instrument
+                    )
+
+                    # Normalize B/S
+                    side = str(row['Buy/Sell']).strip()
+
+                    # Parse quantity
+                    quantity = int(row['Qty'])
+
+                    # Get CP code
+                    cp_code = str(row['CP Code']).strip().upper()
+
+                    # Get trade date - handle Timestamp objects
+                    trade_date_val = row['Trade Date']
+                    if pd.notna(trade_date_val):
+                        if isinstance(trade_date_val, (datetime, pd.Timestamp)):
+                            trade_date = trade_date_val.strftime('%d/%m/%Y')
+                        else:
+                            trade_date = str(trade_date_val).strip()
+                    else:
+                        trade_date = ''
+
+                    # Calculate GST and STT
+                    gst = float(row['GST']) if pd.notna(row['GST']) else 0
+                    stt = float(row['STT']) if pd.notna(row['STT']) else 0
+                    total_taxes = round(gst + stt, 2)
+
+                    # Brokerage column is already pure brokerage (not inclusive of GST)
+                    pure_brokerage = float(row['Brokerage']) if pd.notna(row['Brokerage']) else 0
+
+                    # Build parsed row
+                    parsed_row = {
+                        'bloomberg_ticker': bloomberg_ticker,
+                        'cp_code': cp_code,
+                        'broker_code': self._get_broker_code_from_row(row, df, 11933),  # Read from file, default Nuvama
+                        'side': side,
+                        'quantity': quantity,
+                        'price': float(row['Mkt. Price']),
+                        'pure_brokerage': pure_brokerage,
+                        'total_taxes': total_taxes,
+                        'trade_date': trade_date,
+                        'symbol': symbol,
+                        'scrip': scrip,
+                        'instrument': instrument,
+                        'security_type': security_type,
+                        'strike': strike,
+                        'expiry_date': expiry.strftime('%d/%m/%Y'),
+                        'ticker': ticker
+                    }
+
+                    # Add lots if available
+                    self._add_lots_if_available(parsed_row, row, df)
+
+                    parsed_rows.append(parsed_row)
+
+                except Exception as e:
+                    logger.warning(f"Error parsing Nuvama row {idx}: {e}")
+                    import traceback
+                    logger.warning(traceback.format_exc())
+                    continue
+
+            result_df = pd.DataFrame(parsed_rows)
+            logger.info(f"Parsed {len(result_df)} Nuvama trades with Bloomberg tickers")
+            return result_df
+
+        except Exception as e:
+            logger.error(f"Error parsing Nuvama file: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return pd.DataFrame()
+
+
 class AntiqueParser(BrokerParserBase):
     """Parser for Antique Securities files"""
 
@@ -1839,7 +2028,7 @@ def get_parser_for_broker(broker_id: str, futures_mapping_file: str = "futures m
     elif broker_id == 'EDELWEISS':
         return EdelweissParser(futures_mapping_file)
     elif broker_id == 'NUVAMA':
-        return EdelweissParser(futures_mapping_file)  # Same format as Edelweiss
+        return NuvamaParser(futures_mapping_file)  # Custom parser for Nuvama
     elif broker_id == 'MORGAN':
         return MorganStanleyParser(futures_mapping_file)
     elif broker_id == 'ANTIQUE':

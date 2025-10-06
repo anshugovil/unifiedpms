@@ -49,7 +49,7 @@ BROKER_REGISTRY = {
     'NUVAMA': {
         'name': 'Nuvama Securities',
         'broker_code': 11933,  # Same as Edelweiss
-        'parser_class': 'EdelweissParser',  # Uses same parser
+        'parser_class': 'NuvamaParser',  # Custom parser for Nuvama format
         'file_patterns': ['nuvama', 'NUVAMA'],
         'description': 'Nuvama Securities executing broker (formerly Edelweiss)'
     },
