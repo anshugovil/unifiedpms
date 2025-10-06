@@ -1163,6 +1163,21 @@ class TradeReconciler:
                 summary_df = pd.DataFrame(summary_data)
                 summary_df.to_excel(writer, sheet_name='Summary', index=False)
 
+                # Auto-adjust column widths for better readability
+                for sheet_name in writer.sheets:
+                    worksheet = writer.sheets[sheet_name]
+                    for column in worksheet.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if cell.value:
+                                    max_length = max(max_length, len(str(cell.value)))
+                            except:
+                                pass
+                        adjusted_width = min(max(max_length + 2, 10), 50)
+                        worksheet.column_dimensions[column_letter].width = adjusted_width
+
             logger.info(f"Generated reconciliation report: {filename}")
             return str(filepath)
 

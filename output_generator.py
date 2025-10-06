@@ -359,6 +359,21 @@ class OutputGenerator:
             for col, width in summary_widths.items():
                 ws_summary.column_dimensions[col].width = width
 
+            # Auto-adjust column widths for all sheets (for better readability)
+            from openpyxl.utils import get_column_letter
+            for sheet in wb.worksheets:
+                for column in sheet.columns:
+                    max_length = 0
+                    column_letter = get_column_letter(column[0].column)
+                    for cell in column:
+                        try:
+                            if cell.value:
+                                max_length = max(max_length, len(str(cell.value)))
+                        except:
+                            pass
+                    adjusted_width = min(max(max_length + 2, 10), 50)
+                    sheet.column_dimensions[column_letter].width = adjusted_width
+
             # Save workbook
             wb.save(output_file)
             logger.info(f"Saved positions by underlying to {output_file}")
